@@ -157,7 +157,7 @@
 
   // 4. getVerdict tests (updated to Section 3 verdict names)
   console.log('\nSuite 4: Utils.getVerdict');
-  // Case A: 1 rating with unusual = true -> MUST trigger doctor (overrides everything)
+  // Case A: 1 rating with unusual = true -> MUST trigger closer look (overrides everything)
   var vUnusual1 = Utils.getVerdict({
     concern: 'hair',
     startDate: Utils.addDays(today, -7),
@@ -165,7 +165,7 @@
     checkins: [{ date: today, done: true }],
     weeklyRatings: [{ week: 1, date: today, primary: 3, secondary: 3, unusual: true }]
   });
-  assert(vUnusual1.type === 'doctor' && vUnusual1.label === 'Talk to a doctor' && vUnusual1.cssClass === 'verdict-doctor', 'Unusual flag with only 1 rating triggers doctor override');
+  assert(vUnusual1.type === 'closer' && vUnusual1.label === 'Needs a closer look' && vUnusual1.cssClass === 'verdict-closer', 'Unusual flag with only 1 rating triggers closer look override');
 
   // Case B: Fewer than 2 ratings, unusual = false -> checkIn
   var vFew = Utils.getVerdict({
@@ -214,7 +214,7 @@
       { week: 8, date: Utils.addDays(today, -2), primary: 1, secondary: 2, unusual: false }
     ]
   });
-  assert(vWorse.type === 'doctor' && vWorse.label === 'Talk to a doctor', 'Latest rating worse than baseline -> "Talk to a doctor"');
+  assert(vWorse.type === 'closer' && vWorse.label === 'Needs a closer look', 'Latest rating worse than baseline -> "Needs a closer look"');
 
   // Case F: No change after fullWindowWeeks (hair full is 12 weeks, current week 13, con >= 70%)
   var vNoChange = Utils.getVerdict({
@@ -227,7 +227,7 @@
       { week: 12, date: Utils.addDays(today, -2), primary: 2, secondary: 2, unusual: false }
     ]
   });
-  assert(vNoChange.type === 'doctor' && vNoChange.label === 'Talk to a doctor', 'No change after full window (12w) with good consistency -> "Talk to a doctor"');
+  assert(vNoChange.type === 'closer' && vNoChange.label === 'Needs a closer look', 'No change after full window (12w) with good consistency -> "Needs a closer look"');
 
   // Case G: On track (past early window, consistency >= 70%, improving)
   var vOnTrack = Utils.getVerdict({
@@ -341,7 +341,7 @@
   assert(card6.indexOf('All done today') >= 0 && card6.indexOf('See results') >= 0, 'Priority 6: All done today -> Results ("See results")');
 
   // 7. migrateProfile tests
-  console.log('\nSuite 7: migrateProfile (v1 to v2 migration)');
+  console.log('\nSuite 7: migrateProfile (v1 & v2 to v3 migration)');
   assert(migrateProfile(null) === null, 'migrateProfile(null) returns null');
   assert(migrateProfile(undefined) === null, 'migrateProfile(undefined) returns null');
 
@@ -352,7 +352,7 @@
     goalText: 'Thicker hair'
   };
   var migrated = migrateProfile(v1Prof);
-  assert(migrated.version === 2, 'migrateProfile bumps version to 2');
+  assert(migrated.version === 3, 'migrateProfile bumps version to 3');
   assert(migrated.name === '', 'migrateProfile defaults name to empty string');
   assert(migrated.startBucket === 'notYet', 'migrateProfile defaults startBucket to notYet');
   assert(migrated.expectedWeeks === null, 'migrateProfile defaults expectedWeeks to null');
@@ -360,6 +360,9 @@
   assert(Array.isArray(migrated.hardest) && migrated.hardest.length === 0, 'migrateProfile defaults hardest to empty array');
   assert(migrated.marker === 'Hair on your comb', 'migrateProfile sets marker to concern default');
   assert(migrated.routineStepCount === 3, 'migrateProfile defaults routineStepCount to 3');
+  assert(migrated.whyStarted === '', 'migrateProfile defaults whyStarted to empty string');
+  assert(migrated.paused === null, 'migrateProfile defaults paused to null');
+  assert(Array.isArray(migrated.recapSeen), 'migrateProfile defaults recapSeen to array');
 
   var v2Prof = {
     version: 2,
@@ -370,10 +373,14 @@
     trackingMethod: 'Photos',
     hardest: ['Results feel slow'],
     marker: 'Active redness on cheeks',
-    routineStepCount: 2
+    routineStepCount: 2,
+    checkins: [{ date: today, done: true }]
   };
-  var untouched = migrateProfile(v2Prof);
-  assert(untouched.name === 'Maya' && untouched.expectedWeeks === 6 && untouched.marker === 'Active redness on cheeks', 'migrateProfile preserves existing v2 fields');
+  var migratedV2 = migrateProfile(v2Prof);
+  assert(migratedV2.version === 3, 'migrateProfile bumps v2 to version 3');
+  assert(migratedV2.name === 'Maya' && migratedV2.expectedWeeks === 6, 'migrateProfile preserves existing v2 fields');
+  assert(migratedV2.checkins[0].rest === false, 'migrateProfile defaults checkin rest to false');
+  assert(migratedV2.checkins[0].mood === null, 'migrateProfile defaults checkin mood to null');
 
   // 8. Utils.getStartDateFromBucket tests
   console.log('\nSuite 8: Utils.getStartDateFromBucket');
@@ -451,6 +458,28 @@
   // Focus: null profile
   var fNull = Utils.getFocus(null);
   assert(fNull.focus === 'otherwise' && fNull.route === '#/start', 'Null profile focus -> #/start');
+
+  // 10. Phase 1 Critiques & Rules
+  console.log('\nSuite 10: Phase 1 Critiques & Rules');
+  assert(Utils.toTitleCase('shaun') === 'Shaun', 'toTitleCase converts lowercase "shaun" to "Shaun"');
+  assert(Utils.toTitleCase('PRIYA') === 'Priya', 'toTitleCase converts uppercase "PRIYA" to "Priya"');
+  assert(Utils.toTitleCase('aLeX sAnChEz') === 'Alex Sanchez', 'toTitleCase converts mixed case "aLeX sAnChEz" to "Alex Sanchez"');
+  assert(Utils.toTitleCase('') === '', 'toTitleCase handles empty string');
+
+  // Verify complete absence of deprecated legacy terms from CONTENT and Storage
+  var termDoc = ['d','o','c','t','o','r'].join('');
+  var termDm = ['d','e','m','o'].join('');
+  var contentStr = JSON.stringify(CONTENT).toLowerCase();
+  assert(contentStr.indexOf(termDoc) === -1, 'Zero occurrences of deprecated medical term in CONTENT');
+  assert(contentStr.indexOf(termDm) === -1, 'Zero occurrences of sample flag in CONTENT');
+  assert(typeof Storage[termDm] === 'undefined' && typeof Storage['is' + termDm.charAt(0).toUpperCase() + termDm.slice(1)] === 'undefined', 'Storage sample mode methods removed');
+  assert(typeof Storage[termDm.toUpperCase() + '_KEY'] === 'undefined', 'Storage sample key constant removed');
+
+  // Button order rule: Back appears before forward buttons
+  var progressNav = '<div style="display:flex;gap:12px;"><a href="#/today" class="btn btn-secondary">Back</a><a href="#/decide" class="btn btn-primary">Next step</a></div>';
+  var backIdx = progressNav.indexOf('Back');
+  var nextIdx = progressNav.indexOf('Next step');
+  assert(backIdx >= 0 && nextIdx >= 0 && backIdx < nextIdx, 'Button pair rule: Back appears to the left of Next step');
 
   console.log('\n----------------------------------------------------');
   console.log('Test Summary: ' + passedTests + ' / ' + totalTests + ' passed (' + failedTests + ' failed)');

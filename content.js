@@ -8,27 +8,60 @@ const CONTENT = {
 
   brand: "Be Bodywise",
   appName: "Progress Companion",
-  heroMessage: "Most people quit because they can't tell if it's working.",
+  heroMessage: "See your progress, even when it's slow.",
   emphasis: "progress",
 
-  /* ---- Survey stats (small sample of 7) ---- */
+  /* ---- Landing flow (L1 & L2) ---- */
+  landing: {
+    wordmark: "Progress Companion",
+    headline: "See your progress, even when it's slow",
+    subline: "A daily companion. Set a goal, check in, and watch real change.",
+    howItWorks: [
+      { step: "1", title: "Set a goal", time: "About 1 minute." },
+      { step: "2", title: "Check in daily", time: "10 seconds." },
+      { step: "3", title: "See your results", time: "Every week." }
+    ],
+    benefits: [
+      "Know what's normal, week by week",
+      "Spot small changes you'd miss",
+      "Stay on track, no pressure"
+    ],
+    privacyBadge: "Private. Saved only on your device.",
+    cta: "Get started",
+    intro: {
+      heading: "Let's set you up",
+      subline: "9 quick taps. About 90 seconds.",
+      chapters: [
+        { title: "About you", text: "Name, concern and your personal goal" },
+        { title: "Your routine", text: "When you use it and past experience" },
+        { title: "Your expectations", text: "Timeline pace and hardest struggles" }
+      ],
+      back: "Back",
+      continue: "Continue"
+    },
+    draftPrompt: {
+      title: "Pick up where you left off",
+      text: "You have unsaved setup answers from earlier.",
+      resume: "Continue",
+      restart: "Start over"
+    }
+  },
+
+  /* ---- Positive customer insights ---- */
   stats: {
     sampleSize: 7,
-    sampleNote: "From our small survey of 7 customers",
-    expectedTooFast: "4 of 7",
-    stoppedBecauseSlow: "3 of 3",
-    cantMeasure: "6 of 7",
-    quotes: [
-      { text: "I wasn\u2019t sure if it was doing anything, so I stopped buying", id: "q1" },
-      { text: "I expected something in two weeks. When I saw nothing, I quit", id: "q2" },
-      { text: "I had no idea what changes to look for", id: "q3" }
+    sampleNote: "From customer interviews",
+    tips: [
+      { text: "Small, steady check-ins make change easier to see", id: "t1" },
+      { text: "Tracking one clear marker shows real trends", id: "t2" },
+      { text: "Patience and consistency build long-term wellness", id: "t3" }
     ],
     stageMapping: [
-      { stage: "Set up",    finding: "4 of 7 had vague goals. Clear markers make change visible" },
-      { stage: "Timeline",  finding: "4 of 7 expected results too fast. Honest timelines set realistic pace" },
-      { stage: "Check-in",  finding: "3 of 3 who quit lost motivation. Daily logs build momentum" },
-      { stage: "Results",   finding: "6 of 7 couldn\u2019t tell if products worked. Tracking shows trends" },
-      { stage: "Next step", finding: "Knowing your stage helps you decide whether to continue or talk to a doctor" }
+      { stage: "Set up",    finding: "Clear physical markers make gradual change visible" },
+      { stage: "Timeline",  finding: "Honest biology timelines set a realistic, calm pace" },
+      { stage: "Check-in",  finding: "Consistent daily tracking builds momentum over time" },
+      { stage: "Results",   finding: "Weekly ratings show real progress trends clearly" },
+      { stage: "Next step", finding: "Knowing your stage helps you adjust or continue" }
     ]
   },
 
@@ -37,11 +70,21 @@ const CONTENT = {
 
     hair: {
       label: "Hair",
-      primaryRatingLabel: "How is your hair shedding right now?",
-      secondaryRatingLabel: "How does your hair feel overall?",
-      earlyWindowWeeks: 6,
+      primaryRatingLabel: "How happy are you with your hair shedding?",
+      secondaryRatingLabel: "How happy are you with your hair overall?",
+            earlyWindowWeeks: 6,
       fullWindowWeeks: 12,
-      why: "Hair grows in cycles of months. Follicles need time to cycle before visible changes typically appear.",
+      typicalBand: [
+        { week: 1, low: 1.8, high: 2.5 },
+        { week: 4, low: 2.0, high: 2.8 },
+        { week: 8, low: 2.3, high: 3.3 },
+        { week: 12, low: 2.8, high: 3.9 },
+        { week: 16, low: 3.2, high: 4.3 },
+        { week: 20, low: 3.5, high: 4.6 },
+        { week: 24, low: 3.8, high: 4.9 }
+      ],
+      verify: true,
+      why: "Hair grows in cycles. Visible change needs time to emerge.",
       goalSuggestions: ["Less hair fall", "Thicker-looking hair", "Stronger hair", "Less breakage"],
       markers: ["Hair on your comb", "Hair in the shower drain", "How your hair feels"],
       adjustTips: [
@@ -60,11 +103,11 @@ const CONTENT = {
 
     skin: {
       label: "Face",
-      primaryRatingLabel: "How clear is your skin right now?",
-      secondaryRatingLabel: "How does your skin texture feel?",
+      primaryRatingLabel: "How happy are you with your skin clarity?",
+      secondaryRatingLabel: "How happy are you with your skin texture?",
       earlyWindowWeeks: 4,
       fullWindowWeeks: 8,
-      why: "Skin renews every 4 to 6 weeks. Ingredients need a full renewal cycle to show visible changes.",
+      why: "Skin renews gradually. Ingredients need a full renewal cycle.",
       goalSuggestions: ["Fewer breakouts", "Smoother texture", "Even skin tone", "Less oiliness"],
       markers: ["New breakouts this week", "How your skin feels after washing", "Skin tone evenness"],
       adjustTips: [
@@ -83,11 +126,19 @@ const CONTENT = {
 
     bodyskin: {
       label: "Body skin",
-      primaryRatingLabel: "How does the affected area look right now?",
-      secondaryRatingLabel: "How does the skin texture feel in that area?",
-      earlyWindowWeeks: 6,
+      primaryRatingLabel: "How happy are you with the affected area?",
+      secondaryRatingLabel: "How happy are you with your skin texture?",
+            earlyWindowWeeks: 6,
       fullWindowWeeks: 12,
-      why: "Body skin cells renew slower than facial skin. Texture and pigmentation changes happen gradually over weeks.",
+      typicalBand: [
+        { week: 1, low: 1.9, high: 2.5 },
+        { week: 3, low: 2.2, high: 3.0 },
+        { week: 6, low: 2.7, high: 3.7 },
+        { week: 9, low: 3.3, high: 4.3 },
+        { week: 12, low: 3.7, high: 4.8 }
+      ],
+      verify: true,
+      why: "Body skin renews gradually. Texture changes take steady weeks.",
       goalSuggestions: ["Less pigmentation", "Smoother skin", "More even tone", "Softer texture"],
       markers: ["How the area looks next to nearby skin", "How smooth it feels", "How dry it feels"],
       adjustTips: [
@@ -106,11 +157,19 @@ const CONTENT = {
 
     pcos: {
       label: "PCOS and hormones",
-      primaryRatingLabel: "How would you rate your symptom comfort right now?",
-      secondaryRatingLabel: "How is your daily energy and balance?",
-      earlyWindowWeeks: 8,
+      primaryRatingLabel: "How happy are you with your symptom comfort?",
+      secondaryRatingLabel: "How happy are you with your daily energy?",
+            earlyWindowWeeks: 8,
       fullWindowWeeks: 16,
-      why: "Hormonal balance is gradual. Daily support often needs several months to show consistent changes in how you feel.",
+      typicalBand: [
+        { week: 1, low: 1.9, high: 2.4 },
+        { week: 4, low: 2.1, high: 2.9 },
+        { week: 8, low: 2.6, high: 3.6 },
+        { week: 12, low: 3.1, high: 4.2 },
+        { week: 16, low: 3.6, high: 4.7 }
+      ],
+      verify: true,
+      why: "Hormonal balance takes time. Daily support needs several months.",
       goalSuggestions: ["More regular cycles", "Less acne", "Better energy", "More predictable mood"],
       markers: ["Cycle regularity", "Energy most days", "Skin or hair changes"],
       adjustTips: [
@@ -129,11 +188,11 @@ const CONTENT = {
 
     period: {
       label: "Period and hygiene",
-      primaryRatingLabel: "How would you rate your comfort during your cycle?",
-      secondaryRatingLabel: "How regular does your cycle feel?",
+      primaryRatingLabel: "How happy are you with your cycle comfort?",
+      secondaryRatingLabel: "How happy are you with your cycle regularity?",
       earlyWindowWeeks: 8,
       fullWindowWeeks: 12,
-      why: "Period care needs 2 to 3 menstrual cycles to show consistent differences. Meaningful changes take 8 to 12 weeks.",
+      why: "Cycle care takes time. Steady changes emerge across cycles.",
       goalSuggestions: ["Less discomfort", "More regular cycle", "Better hygiene routine", "Less bloating"],
       markers: ["Comfort during your period", "Cycle timing", "Bloating"],
       adjustTips: [
@@ -152,11 +211,35 @@ const CONTENT = {
 
     wellness: {
       label: "General wellness",
-      primaryRatingLabel: "How do you feel day to day right now?",
-      secondaryRatingLabel: "How is your energy level?",
-      earlyWindowWeeks: 4,
+      primaryRatingLabel: "How happy are you with your primary goal?",
+      secondaryRatingLabel: "How happy are you with your overall balance?",
+                        earlyWindowWeeks: 4,
       fullWindowWeeks: 8,
-      why: "Nutrients need 4 to 8 weeks of daily use to absorb steadily and support daily energy.",
+      typicalBand: [
+        { week: 1, low: 2.0, high: 2.7 },
+        { week: 2, low: 2.3, high: 3.2 },
+        { week: 4, low: 2.9, high: 3.9 },
+        { week: 6, low: 3.4, high: 4.4 },
+        { week: 8, low: 3.8, high: 4.8 }
+      ],
+      verify: true,
+      typicalBand: [
+        { week: 1, low: 2.0, high: 2.6 },
+        { week: 2, low: 2.2, high: 3.0 },
+        { week: 4, low: 2.8, high: 3.8 },
+        { week: 6, low: 3.3, high: 4.3 },
+        { week: 8, low: 3.7, high: 4.8 }
+      ],
+      verify: true,
+      typicalBand: [
+        { week: 1, low: 1.9, high: 2.5 },
+        { week: 2, low: 2.2, high: 3.0 },
+        { week: 4, low: 2.7, high: 3.7 },
+        { week: 6, low: 3.2, high: 4.2 },
+        { week: 8, low: 3.7, high: 4.8 }
+      ],
+      verify: true,
+      why: "Nutrients absorb over weeks. Steady energy builds with daily use.",
       goalSuggestions: ["More energy", "Better sleep", "Improved immunity", "General well-being"],
       markers: ["Energy by afternoon", "Sleep quality", "How you feel day to day"],
       adjustTips: [
@@ -174,8 +257,22 @@ const CONTENT = {
     }
   },
 
+  /* ---- Rating scale labels ---- */
+  ratingScaleLabels: ["Not good", "So-so", "Okay", "Good", "Great"],
+
   /* ---- Quiz options ---- */
   quiz: {
+    whyWeAsk: {
+      q1: "To greet you and personalize your daily space.",
+      q2: "Different parts of the body renew at different speeds.",
+      q3: "Helps us place you accurately on your timeline.",
+      q4: "A specific change is easier to measure than general feel.",
+      q5: "Helps tailor tips for what works best.",
+      q6: "Habits stick better when tied to morning or night.",
+      q7: "Lets us compare your expectations with biological timelines.",
+      q8: "We personalize support around what trips you up.",
+      q9: "Guides whether to watch photos, notes or physical signs."
+    },
     concerns: [
       { value: "hair",     label: "Hair" },
       { value: "skin",     label: "Face" },
@@ -308,8 +405,7 @@ const CONTENT = {
 
   /* ---- Disclaimers ---- */
   disclaimers: {
-    medical:  "Not medical advice. See a doctor if worried",
-    settings: "Not medical advice. Does not diagnose or treat any condition",
+    calm:     "For tracking only. Not medical advice.",
     data:     "Saved on this device only",
     starter:  "Starting point, not a prescription"
   },
@@ -319,10 +415,10 @@ const CONTENT = {
     tooEarly:         "Normal so far. Most people need {weeks}+ weeks.",
     consistencyFirst: "{done} of {total} days done. Aim for steady.",
     onTrack:          "On track. Keep going.",
-    doctorUnusual:    "You flagged something unusual. Check with a doctor.",
-    doctorNoProgress: "Steady routine, no change yet. A doctor can help.",
+    closerUnusual:    "You flagged something unusual. Pause and check with a health professional.",
+    closerNoProgress: "Steady routine, no change yet. Try changing one thing.",
     checkInAgain:     "Check in next week for your first verdict.",
-    pastWindow:       "Past the usual window. A doctor can help if nothing's changed."
+    pastWindow:       "Past the usual window. Try a different approach."
   },
 
   /* ---- Verdict names ---- */
@@ -330,7 +426,7 @@ const CONTENT = {
     tooEarly:    "Too early to tell",
     onTrack:     "On track",
     consistency: "Needs steadier routine",
-    doctor:      "Talk to a doctor",
+    closer:      "Needs a closer look",
     checkIn:     "Keep going"
   },
 
@@ -345,10 +441,152 @@ const CONTENT = {
   decideNudges: {
     tooEarly:   "Early in usual window. Running out mid-course risks progress, so plan refill.",
     onTrack:    "On track. Plan refill around {date} to avoid gaps.",
-    doctor:     "Before refilling, consider speaking with a doctor about what you see.",
+    closer:     "Consider trying a different approach or speaking with a health professional.",
     noVerdict:  "Keep routine going. Plan your refill so you stay consistent.",
     packDone:   "Your pack may have run out."
   },
+  /* ---- Typical band explanations ---- */
+  typicalBandExplanation: "Many people see little change early on.",
+  typicalBandStatus: {
+    inside: "Inside the typical range",
+    below: "A bit below typical range",
+    above: "Above the typical range"
+  },
 
-  version: "2.0.0"
+  /* ---- Line-drawn SVG face scales (1 to 5) ---- */
+  faces: [
+    { value: 1, label: "Not good" },
+    { value: 2, label: "So-so" },
+    { value: 3, label: "Okay" },
+    { value: 4, label: "Good" },
+    { value: 5, label: "Great" }
+  ],
+
+  /* ---- Check-in & continuity deck ---- */
+  checkin: {
+    tapToCheckIn: "Tap to check in",
+    doneForToday: "Done for today",
+    seeYouTomorrow: "See you tomorrow",
+    undo: "Undo",
+    takeRestDay: "Take a rest day",
+    restDayTaken: "Rest day taken",
+    restDaySub: "Streak protected. See you tomorrow",
+    addNote: "Add a note",
+    saveNote: "Save note",
+    notePlaceholder: "A quick note about today...",
+    remindMeDaily: "Remind me daily",
+    restLimitNotice: "Rest limit reached for this rolling week",
+    yesterdayDone: "Yesterday · Done",
+    yesterdayRest: "Yesterday · Rest day",
+    yesterdayMissed: "Yesterday · Missed",
+    yesterdayAddIt: "Add it",
+    todayLabel: "Today · Day {day}",
+    tomorrowLabel: "Tomorrow · Day {day}. Same time works best",
+    welcomeBack: "Welcome back. Pick up today",
+    backupNote: "Saved on this device. Back up to keep it safe",
+    backupBtn: "Back up my data",
+    restoreBtn: "Restore from backup",
+    restoreConfirm: "Restore data from this backup? Your current device data will be updated",
+    restoreSuccess: "Data restored",
+    restoreError: "Could not read this backup file",
+    newDayBanner: "New day. Day {day}"
+  },
+
+  /* ---- Support flow (Feeling stuck?) ---- */
+  support: {
+    title: "Feeling stuck?",
+    step1Title: "What is making it hard?",
+    step1Subtitle: "Choose what fits best right now",
+    reasons: [
+      { id: "slow", label: "Results feel slow" },
+      { id: "cant_tell", label: "Can not tell if it is working" },
+      { id: "forgetting", label: "I keep forgetting" },
+      { id: "not_feeling_good", label: "I am not feeling good about it" },
+      { id: "side_effects", label: "Side effects" },
+      { id: "other", label: "Something else" }
+    ],
+    tailored: {
+      slow: {
+        title: "Patience takes practice",
+        body: "Biological shifts take time. Notice subtle signs around week {week}.",
+        action: "See my timeline",
+        route: "#/expect"
+      },
+      cant_tell: {
+        title: "Focus on one marker",
+        body: "Judging overall change is tricky. Tracking one physical sign makes trends clearer.",
+        action: "Pick a marker",
+        route: "#/start"
+      },
+      forgetting: {
+        title: "Anchor to your routine",
+        body: "Linking your product to a daily habit makes remembering automatic.",
+        action: "Remind me daily",
+        isReminder: true
+      },
+      not_feeling_good: {
+        title: "Be kind to yourself",
+        body: "Progress is gradual. Every check-in counts toward your goal.",
+        action: "Keep going",
+        route: "#/home"
+      },
+      side_effects: {
+        title: "Safety comes first",
+        body: "Pause the product and check with a health professional.",
+        action: "Pause routine",
+        isPause: true
+      },
+      other: {
+        title: "Adjust your pace",
+        body: "Take a pause, review your notes, or continue when you feel ready.",
+        action: "Keep going",
+        route: "#/home"
+      }
+    },
+    choicesTitle: "Choose your next step",
+    choices: {
+      keepGoing: "Keep going",
+      pauseForNow: "Pause for now",
+      imDone: "I am done"
+    },
+    pauseHeading: "Routine paused",
+    pauseBody: "No check-ins expected. Your consistency will not be penalised.",
+    resumeBtn: "Resume routine",
+    doneHeading: "Your journey summary",
+    doneBody: "Here is everything you logged. You can save your progress summary anytime."
+  },
+
+  /* ---- Week recap stories ---- */
+  recap: {
+    title: "Week recap",
+    slide1Heading: "Week {week} done",
+    slide1Sub: "{count} check-ins logged this week",
+    slide1FreshSub: "A fresh week starts today. Every check-in counts",
+    consistencyTitle: "Consistency",
+    consistencySub: "{pct}% over the last 28 days · Best streak {streak} days",
+    markerTitle: "Your marker",
+    markerSub: "From {startRating} to {currentRating} out of 5",
+    typicalTitle: "Typical range",
+    typicalSub: "You are {status} for week {week}",
+    memoryTitle: "Why you started",
+    nextTitle: "Looking ahead",
+    nextSub: "Next milestone: {milestone}",
+    close: "Close"
+  },
+
+  /* ---- Journey three rings ---- */
+  rings: {
+    checkin: "Today's check-in",
+    review: "Weekly review",
+    consistency: "28-day consistency"
+  },
+
+  /* ---- Memory cards ---- */
+  memory: {
+    title: "Memory",
+    weeksAgo: "{weeks} weeks ago you wrote",
+    scoreChange: "Starting point was {start}/5. Today it is {current}/5"
+  },
+
+  version: "3.0.0"
 };

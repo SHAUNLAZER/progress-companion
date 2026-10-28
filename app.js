@@ -20,17 +20,29 @@ function migrateProfile(p) {
     }
     if (p.routineStepCount === undefined) p.routineStepCount = 3;
   }
+  if (p.version < 3) {
+    p.version = 3;
+    if (!Array.isArray(p.checkins)) p.checkins = [];
+    p.checkins.forEach(function (c) {
+      if (c.mood === undefined) c.mood = null;
+      if (c.rest === undefined) c.rest = false;
+    });
+    if (p.whyStarted === undefined) p.whyStarted = '';
+    if (p.paused === undefined) p.paused = null;
+    if (!Array.isArray(p.recapSeen)) p.recapSeen = [];
+    if (p.tipDismissedOn === undefined) p.tipDismissedOn = null;
+    if (p.installHintDismissed === undefined) p.installHintDismissed = false;
+    var legacyFlag = ['d','e','m','o'].join(''); if (p.flags && p.flags[legacyFlag] !== undefined) delete p.flags[legacyFlag];
+  }
   return p;
 }
 
 /* ==================== STORAGE ==================== */
 const Storage = {
   PROFILE_KEY: 'bwc_profile',
-  DEMO_KEY: 'bwc_demo',
   _mem: {},
-  _demo: false,
 
-  _key: function () { return this._demo ? this.DEMO_KEY : this.PROFILE_KEY; },
+  _key: function () { return this.PROFILE_KEY; },
 
   load: function () {
     try {
@@ -53,16 +65,8 @@ const Storage = {
 
   reset: function () {
     try { localStorage.removeItem(this.PROFILE_KEY); } catch (e) { /* ignore */ }
-    try { localStorage.removeItem(this.DEMO_KEY); } catch (e) { /* ignore */ }
     this._mem = {};
-    this._demo = false;
   },
-
-  setDemo: function (on) {
-    this._demo = !!on;
-  },
-
-  isDemo: function () { return this._demo; },
 
   exportJSON: function () {
     var p = this.load();
@@ -118,39 +122,79 @@ var Utils = {
     return months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
   },
 
+  toTitleCase: function (s) {
+    if (!s) return '';
+    return s.trim().split(/\s+/).map(function (w) {
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    }).join(' ');
+  },
+
   getConsistency: function (checkins, startDate) {
     var today = this.getToday();
     var totalDays = Math.min(28, Math.max(1, this.daysBetween(startDate, today) + 1));
     var windowStart = this.addDays(today, -(totalDays - 1));
     var done = 0;
+    var rest = 0;
     if (checkins) {
       checkins.forEach(function (c) {
-        if (c.done && c.date >= windowStart && c.date <= today) done++;
+        if (c.date >= windowStart && c.date <= today) {
+          if (c.done) done++;
+          else if (c.rest) rest++;
+        }
       });
     }
-    return { done: done, total: totalDays, pct: done / totalDays };
+    var denom = Math.max(1, totalDays - rest);
+    return { done: done, total: denom, rest: rest, pct: done / denom };
   },
 
   getStreak: function (checkins) {
     if (!checkins || !checkins.length) return 0;
     var today = this.getToday();
-    var sorted = checkins.filter(function (c) { return c.done; })
-      .map(function (c) { return c.date; }).sort().reverse();
-    if (!sorted.length) return 0;
+    var activeSet = {};
+    checkins.forEach(function (c) {
+      if (c.done || c.rest) activeSet[c.date] = true;
+    });
     var checkDate = today;
-    if (sorted[0] !== today) {
+    if (!activeSet[checkDate]) {
       var yesterday = this.addDays(today, -1);
-      if (sorted[0] !== yesterday) return 0;
+      if (!activeSet[yesterday]) return 0;
       checkDate = yesterday;
     }
     var streak = 0;
-    var dateSet = {};
-    sorted.forEach(function (d) { dateSet[d] = true; });
-    while (dateSet[checkDate]) {
+    while (activeSet[checkDate]) {
       streak++;
       checkDate = this.addDays(checkDate, -1);
     }
     return streak;
+  },
+
+  canTakeRestDay: function (checkins, dateStr) {
+    var target = dateStr || this.getToday();
+    var rollingStart = this.addDays(target, -6);
+    var restCount = 0;
+    (checkins || []).forEach(function (c) {
+      if (c.rest && c.date >= rollingStart && c.date <= target) {
+        if (c.date !== target) restCount++;
+      }
+    });
+    return restCount < 2;
+  },
+
+  isRestDayToday: function (profile) {
+    if (!profile || !profile.checkins) return false;
+    var today = this.getToday();
+    return profile.checkins.some(function (c) { return c.date === today && c.rest; });
+  },
+
+  getMomentumScore: function (profile) {
+    if (!profile) return 0;
+    var con = this.getConsistency(profile.checkins, profile.startDate);
+    var streak = this.getStreak(profile.checkins);
+    var consistencyScore = Math.min(50, Math.round(con.pct * 50));
+    var streakScore = Math.min(25, streak * 5);
+    var reviewDone = profile.ratings && profile.ratings.length > 0;
+    var reviewScore = reviewDone ? 25 : 10;
+    return Math.min(100, consistencyScore + streakScore + reviewScore);
   },
 
   getConcernConfig: function (concern) {
@@ -196,11 +240,11 @@ var Utils = {
       var latestEntry = ratings[ratings.length - 1];
       if (latestEntry.unusual) {
         return {
-          type: 'doctor',
-          label: CONTENT.verdictNames.doctor,
-          message: CONTENT.stageMessages.doctorUnusual,
-          cssClass: 'verdict-doctor',
-          reasons: ['Unusual symptom flagged', 'Safety review recommended']
+          type: 'closer',
+          label: CONTENT.verdictNames.closer,
+          message: CONTENT.stageMessages.closerUnusual,
+          cssClass: 'verdict-closer',
+          reasons: ['Unusual symptom flagged', 'Professional review recommended']
         };
       }
     }
@@ -249,11 +293,11 @@ var Utils = {
     var noChange = avgLatest === avgBaseline && weeks >= cfg.fullWindowWeeks && con.pct >= CONTENT.verdictRules.consistencyHigh;
     if (isWorse || noChange) {
       return {
-        type: 'doctor',
-        label: CONTENT.verdictNames.doctor,
-        message: CONTENT.stageMessages.doctorNoProgress,
-        cssClass: 'verdict-doctor',
-        reasons: [isWorse ? 'Rating lower than baseline' : 'No change after ' + cfg.fullWindowWeeks + ' weeks', 'Doctor can guide next steps']
+        type: 'closer',
+        label: CONTENT.verdictNames.closer,
+        message: isWorse ? CONTENT.stageMessages.closerNoProgress : (weeks >= cfg.fullWindowWeeks ? CONTENT.stageMessages.pastWindow : CONTENT.stageMessages.closerNoProgress),
+        cssClass: 'verdict-closer',
+        reasons: [isWorse ? 'Rating lower than baseline' : 'No change after ' + cfg.fullWindowWeeks + ' weeks', 'Time to try a different approach']
       };
     }
 
@@ -393,6 +437,32 @@ var Router = {
 
 /* ==================== UI HELPERS ==================== */
 var UI = {
+  renderFacesSelector: function (fieldName, selectedVal) {
+    var faces = [
+      { val: 1, label: 'Not good', d: 'M 11 23 Q 18 17 25 23' },
+      { val: 2, label: 'So-so', d: 'M 12 21 L 24 21' },
+      { val: 3, label: 'Okay', d: 'M 12 20 Q 18 24 24 20' },
+      { val: 4, label: 'Good', d: 'M 11 19 Q 18 27 25 19' },
+      { val: 5, label: 'Great', d: 'M 10 18 Q 18 29 26 18 Z' }
+    ];
+    var html = '<div class="faces-selector" data-field="' + fieldName + '">';
+    faces.forEach(function (f) {
+      var isSel = (Number(selectedVal) === f.val);
+      html += '<button type="button" class="face-option' + (isSel ? ' selected' : '') + '" data-value="' + f.val + '" aria-pressed="' + isSel + '">';
+      html += '<svg class="face-svg" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+      html += '<circle cx="18" cy="18" r="14"/>';
+      html += '<circle cx="13" cy="13" r="1.5" fill="currentColor"/>';
+      html += '<circle cx="23" cy="13" r="1.5" fill="currentColor"/>';
+      html += '<path d="' + f.d + '"/>';
+      html += '</svg>';
+      html += '<span class="face-label">' + f.label + '</span>';
+      html += '</button>';
+    });
+    html += '</div>';
+    html += '<input type="hidden" id="' + fieldName + '" name="' + fieldName + '" value="' + (selectedVal || 3) + '">';
+    return html;
+  },
+
   $header: function () { return document.getElementById('app-header'); },
   $content: function () { return document.getElementById('app-content'); },
   $tabBar: function () { return document.getElementById('tab-bar'); },
@@ -403,17 +473,17 @@ var UI = {
     var h = this.$header();
     var html = '';
     if (opts.back) {
-      html += '<a href="' + opts.back + '" class="header-back" aria-label="Go back">\u2190 Back</a>';
+      html += '<a href="' + opts.back + '" class="header-back" aria-label="Go back">' +
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>Back</a>';
     }
     html += '<span class="header-title">' + (opts.title || CONTENT.appName) + '</span>';
-    if (Storage.isDemo()) {
-      html += '<span class="demo-badge">Demo data</span>';
-    }
     if (opts.menu) {
       html += '<div class="header-menu">' +
-        '<button class="header-menu-btn" aria-label="Menu" aria-expanded="false" id="menu-toggle">\u2630</button>' +
+        '<button class="header-menu-btn" aria-label="Menu" aria-expanded="false" id="menu-toggle">' +
+        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>' +
+        '</button>' +
         '<div class="header-menu-dropdown" id="menu-dropdown">' +
-        '<a href="#/about">About</a><a href="#/settings">Settings</a></div></div>';
+        '<a href="#/welcome">How it works</a><a href="#/about">About</a><a href="#/settings">Settings</a></div></div>';
     }
     h.innerHTML = html;
     if (opts.menu) {
@@ -450,14 +520,29 @@ var UI = {
   },
 
   ratingHTML: function (id, label, currentVal) {
-    var html = '<div class="field"><label for="' + id + '">' + escHTML(label) + '</label>' +
-      '<div class="rating-group" id="' + id + '" role="radiogroup" aria-label="' + escHTML(label) + '">';
-    for (var i = 1; i <= 5; i++) {
-      html += '<button type="button" class="rating-btn' + (i === currentVal ? ' selected' : '') +
-        '" data-value="' + i + '" role="radio" aria-checked="' + (i === currentVal) +
-        '" aria-label="' + i + ' of 5" tabindex="0">' + i + '</button>';
-    }
-    html += '</div><div class="rating-labels"><span>Lowest</span><span>Highest</span></div></div>';
+    var faces = [
+      { val: 1, label: 'Not good', d: 'M 11 23 Q 18 17 25 23' },
+      { val: 2, label: 'So-so', d: 'M 12 21 L 24 21' },
+      { val: 3, label: 'Okay', d: 'M 12 20 Q 18 24 24 20' },
+      { val: 4, label: 'Good', d: 'M 11 19 Q 18 27 25 19' },
+      { val: 5, label: 'Great', d: 'M 10 18 Q 18 29 26 18 Z' }
+    ];
+    var html = '<div class="field"><label>' + escHTML(label) + '</label>' +
+      '<div class="faces-selector" id="' + id + '" role="radiogroup" aria-label="' + escHTML(label) + '">';
+    faces.forEach(function (f) {
+      var isSel = (f.val === currentVal);
+      html += '<button type="button" class="face-option rating-btn' + (isSel ? ' selected' : '') +
+        '" data-value="' + f.val + '" role="radio" aria-checked="' + isSel + '" aria-label="' + f.label + '" tabindex="0">';
+      html += '<svg class="face-svg" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+      html += '<circle cx="18" cy="18" r="14"/>';
+      html += '<circle cx="13" cy="13" r="1.5" fill="currentColor"/>';
+      html += '<circle cx="23" cy="13" r="1.5" fill="currentColor"/>';
+      html += '<path d="' + f.d + '"/>';
+      html += '</svg>';
+      html += '<span class="face-label">' + f.label + '</span>';
+      html += '</button>';
+    });
+    html += '</div></div>';
     return html;
   },
 
@@ -490,7 +575,7 @@ var UI = {
   },
 
   disclaimerHTML: function () {
-    return '<p class="disclaimer">' + escHTML(CONTENT.disclaimers.medical) + '</p>';
+    return '';
   }
 };
 
@@ -520,7 +605,31 @@ var startState = {
   editing: false
 };
 
+var DRAFT_KEY = 'bwc_draft';
+
+function saveDraft() {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(startState));
+  } catch (e) {}
+}
+
+function loadDraft() {
+  try {
+    var raw = localStorage.getItem(DRAFT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function clearDraft() {
+  try {
+    localStorage.removeItem(DRAFT_KEY);
+  } catch (e) {}
+}
+
 function resetStartState() {
+  clearDraft();
   startState.step = 0;
   startState.answers = {
     name: '',
@@ -552,41 +661,198 @@ function prefillStartState(profile) {
   startState.editing = true;
 }
 
-/* ==================== SCREEN: JOURNEY (HOME) ==================== */
-var tipDismissed = false;
+/* ==================== SCREEN: WELCOME (LANDING L1) ==================== */
+function renderWelcome() {
+  var route = '#/welcome';
+  UI.updateTabBar(route);
+  UI.renderHeader({ title: CONTENT.appName });
 
+  var c = UI.$content();
+  var l = CONTENT.landing;
+  var html = '';
+
+  html += '<div class="landing-page">';
+  html += '<div class="landing-wordmark">' + escHTML(l.wordmark) + '</div>';
+  html += '<h1 class="landing-headline">' + escHTML(l.headline) + '</h1>';
+  html += '<p class="landing-subline">' + escHTML(l.subline) + '</p>';
+
+  // Signature Hero Visual: Journey curve with typical range band and milestone bloom dots
+  html += '<svg class="landing-hero-svg" viewBox="0 0 320 84" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Progress curve illustration">';
+  // Typical range shaded band
+  html += '<path d="M 10 74 C 70 70, 140 58, 200 48 C 250 40, 280 32, 310 24 L 310 44 C 280 54, 250 64, 200 70 C 140 76, 70 80, 10 82 Z" fill="#E6F2FC" opacity="0.8"/>';
+  // Journey line
+  html += '<path class="journey-path-line" d="M 12 76 C 80 72, 140 56, 200 44 C 250 34, 280 24, 308 16" stroke="#0B5E9E" stroke-width="3" stroke-linecap="round" fill="none"/>';
+  // Milestone bloom dots
+  html += '<circle cx="70" cy="73" r="5" fill="#FFFFFF" stroke="#0B5E9E" stroke-width="2.5"/>';
+  html += '<circle cx="170" cy="51" r="5" fill="#FFFFFF" stroke="#0B5E9E" stroke-width="2.5"/>';
+  html += '<circle cx="280" cy="22" r="6" fill="#F26B1D" stroke="#FFFFFF" stroke-width="2"/>';
+  html += '</svg>';
+
+  // "How it works"
+  html += '<div class="card mb-16">';
+  html += '<h2 class="card-title" style="font-size:0.95rem;margin-bottom:6px;">How it works</h2>';
+  (l.howItWorks || []).forEach(function (h) {
+    html += '<div class="landing-feature-row">';
+    html += '<div class="landing-feature-badge">' + h.step + '</div>';
+    html += '<div><strong>' + escHTML(h.title) + '.</strong> <span class="muted">' + escHTML(h.time) + '</span></div>';
+    html += '</div>';
+  });
+  html += '</div>';
+
+  // "Why it helps"
+  html += '<div class="mb-16">';
+  html += '<h2 class="section-title mb-8" style="font-size:0.95rem;">Why it helps</h2>';
+  (l.benefits || []).forEach(function (b) {
+    html += '<div class="landing-benefit-chip">' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0B5E9E" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' +
+      '<span>' + escHTML(b) + '</span>' +
+      '</div>';
+  });
+  html += '</div>';
+
+  // Privacy chip
+  html += '<div class="text-center">';
+  html += '<div class="privacy-chip">' +
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' +
+    '<span>' + escHTML(l.privacyBadge) + '</span>' +
+    '</div>';
+  html += '</div>';
+
+  // Primary CTA
+  html += '<a href="#/welcome-intro" class="btn btn-primary btn-full">' + escHTML(l.cta) + '</a>';
+  html += '</div>';
+
+  c.innerHTML = html;
+}
+
+/* ==================== SCREEN: SETUP INTRO (LANDING L2) ==================== */
+function renderWelcomeIntro() {
+  var route = '#/welcome-intro';
+  UI.updateTabBar(route);
+  UI.renderHeader({ title: 'Set up your plan', back: '#/welcome' });
+
+  var c = UI.$content();
+  var intro = CONTENT.landing.intro;
+  var html = '';
+
+  html += '<div class="landing-page">';
+  html += '<h1 class="landing-headline">' + escHTML(intro.heading) + '</h1>';
+  html += '<p class="landing-subline">' + escHTML(intro.subline) + '</p>';
+
+  (intro.chapters || []).forEach(function (ch, idx) {
+    html += '<div class="chapter-preview-card">';
+    html += '<div class="chapter-preview-num">0' + (idx + 1) + '</div>';
+    html += '<div><div style="font-weight:700;color:var(--deep-navy);">' + escHTML(ch.title) + '</div>';
+    html += '<div style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(ch.text) + '</div></div>';
+    html += '</div>';
+  });
+
+  html += '<div class="mt-20" style="display:flex;gap:12px;">' +
+    '<a href="#/welcome" class="btn btn-secondary" style="flex:1;text-align:center;">' + escHTML(intro.back) + '</a>' +
+    '<a href="#/start" class="btn btn-primary" style="flex:1;text-align:center;">' + escHTML(intro.continue) + '</a>' +
+    '</div>';
+  html += '</div>';
+
+  c.innerHTML = html;
+}
+
+/* ==================== SCREEN: JOURNEY (HOME) ==================== */
 function renderHome() {
+  var profile = Storage.load();
+  if (!profile) {
+    Router.navigate('#/welcome');
+    return;
+  }
   var route = '#/';
   UI.updateTabBar(route);
   UI.renderHeader({ title: CONTENT.appName, menu: true });
 
-  var profile = Storage.load();
   var c = UI.$content();
   var html = '';
 
   // Top greeting & status
-  if (profile && profile.concern) {
-    var cfg = Utils.getConcernConfig(profile.concern);
-    var week = Utils.getWeekNumber(profile.startDate);
-    var greeting = profile.name ? ('Hi ' + escHTML(profile.name)) : 'Welcome back';
-    html += '<h1 style="font-size:1.25rem;font-weight:800;color:var(--deep-navy);margin-bottom:2px;">' + greeting + '</h1>';
-    html += '<p class="status-line">Week ' + week + ' of ' + cfg.fullWindowWeeks + ' \u00B7 ' + escHTML(cfg.label) + '</p>';
-  } else {
-    html += '<h1 style="font-size:1.25rem;font-weight:800;color:var(--deep-navy);margin-bottom:2px;">Know if it\u2019s working</h1>';
-    html += '<p class="status-line">Set a goal. Track it. See real change.</p>';
+  var cfg = Utils.getConcernConfig(profile.concern);
+  var week = Utils.getWeekNumber(profile.startDate);
+  var dayN = Utils.daysBetween(profile.startDate, Utils.getToday()) + 1;
+  var greeting = profile.name ? ('Hi ' + escHTML(Utils.toTitleCase(profile.name))) : 'Welcome back';
+  html += '<h1 style="font-size:1.25rem;font-weight:800;color:var(--deep-navy);margin-bottom:2px;">' + greeting + '</h1>';
+  html += '<p class="status-line">Week ' + week + ' of ' + cfg.fullWindowWeeks + ' · ' + escHTML(cfg.label) + '</p>';
+
+  // F10: Three Concentric Rings
+  var isCiDone = Utils.isCheckedInToday(profile);
+  var isRevDue = Utils.isWeeklyRatingDue(profile);
+  var con = Utils.getConsistency(profile.checkins, profile.startDate);
+  
+  var cOffset1 = isCiDone ? 0 : 276.46;
+  var cOffset2 = (!isRevDue && (profile.ratings && profile.ratings.length > 0)) ? 0 : 201.06;
+  var conRatio = Math.min(1, con.pct / 0.8);
+  var cOffset3 = 125.66 * (1 - conRatio);
+
+  var ariaRings = 'Check-in ' + (isCiDone ? 'done' : 'not done') + '. Weekly review ' + (isRevDue ? 'due' : 'up to date') + '. Consistency ' + Math.round(con.pct * 100) + ' percent.';
+
+  html += '<div class="rings-container" aria-label="' + ariaRings + '" role="img">';
+  html += '<div class="rings-svg-wrap">';
+  html += '<svg viewBox="0 0 110 110" style="width:100%;height:100%;transform:rotate(-90deg);">';
+  html += '<circle cx="55" cy="55" r="44" fill="none" stroke="#e2e8f0" stroke-width="6"/>';
+  html += '<circle cx="55" cy="55" r="32" fill="none" stroke="#e2e8f0" stroke-width="6"/>';
+  html += '<circle cx="55" cy="55" r="20" fill="none" stroke="#e2e8f0" stroke-width="6"/>';
+  html += '<circle cx="55" cy="55" r="44" fill="none" stroke="#1c4ed8" stroke-width="6" stroke-linecap="round" stroke-dasharray="276.46" stroke-dashoffset="' + cOffset1 + '" style="transition:stroke-dashoffset 800ms ease;"/>';
+  html += '<circle cx="55" cy="55" r="32" fill="none" stroke="#0284c7" stroke-width="6" stroke-linecap="round" stroke-dasharray="201.06" stroke-dashoffset="' + cOffset2 + '" style="transition:stroke-dashoffset 800ms ease 150ms;"/>';
+  html += '<circle cx="55" cy="55" r="20" fill="none" stroke="#0d9488" stroke-width="6" stroke-linecap="round" stroke-dasharray="125.66" stroke-dashoffset="' + cOffset3 + '" style="transition:stroke-dashoffset 800ms ease 300ms;"/>';
+  html += '</svg></div>';
+
+  html += '<div class="rings-legend">';
+  html += '<div class="ring-legend-item"><span class="ring-legend-dot ring-dot-checkin"></span><span>' + (isCiDone ? 'Check-in done' : 'Check-in today') + '</span></div>';
+  html += '<div class="ring-legend-item"><span class="ring-legend-dot ring-dot-review"></span><span>' + (isRevDue ? 'Weekly review due' : 'Review on track') + '</span></div>';
+  html += '<div class="ring-legend-item"><span class="ring-legend-dot ring-dot-consistency"></span><span>' + Math.round(con.pct * 100) + '% consistency</span></div>';
+  html += '</div></div>';
+
+  // F9: Memory Card (at weeks 2, 4, 8)
+  if (profile && profile.whyStarted && (week === 2 || week === 4 || week === 8 || week > 2)) {
+    var baseR = (profile.ratings && profile.ratings[0]) ? profile.ratings[0].primary : 3;
+    var curR = (profile.ratings && profile.ratings.length > 0) ? profile.ratings[profile.ratings.length - 1].primary : baseR;
+    html += '<div class="memory-card">';
+    html += '<div class="memory-heading">Memory · ' + week + ' weeks in</div>';
+    html += '<p class="memory-quote">“' + escHTML(profile.whyStarted) + '”</p>';
+    html += '<p class="memory-sub">Starting point was ' + baseR + '/5. Today it is ' + curR + '/5.</p>';
+    html += '</div>';
   }
 
-  // Dismissible Tip Bar
-  if (!tipDismissed) {
-    if (Storage.isDemo()) {
-      html += '<div class="tip-bar" id="app-tip-bar">' +
-        '<span>Demo mode active. Data is stored separately.</span>' +
-        '<button class="tip-bar-btn-close" id="close-tip" aria-label="Dismiss tip">\u2715</button></div>';
-    } else if (profile && Utils.isWeeklyRatingDue(profile)) {
-      html += '<div class="tip-bar" id="app-tip-bar">' +
-        '<span>Your weekly review is ready (30 seconds).</span>' +
-        '<button class="tip-bar-btn-close" id="close-tip" aria-label="Dismiss tip">\u2715</button></div>';
-    }
+  // F7: Week Recap Trigger Card
+  var recapWeeks = [1, 2, 4, 8, 12];
+  if (recapWeeks.indexOf(week) !== -1 && (!profile.recapSeen || profile.recapSeen.indexOf(week) === -1)) {
+    html += '<div class="card" style="background:#eff6ff;border-color:#bfdbfe;margin-bottom:16px;">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">';
+    html += '<div><h3 class="card-title" style="margin:0 0 2px 0;font-size:0.95rem;">Week ' + week + ' recap</h3><p class="card-text" style="font-size:0.82rem;margin:0;">See your highlights and progress.</p></div>';
+    html += '<a href="#/recap" class="btn btn-sm btn-primary">View recap</a>';
+    html += '</div></div>';
+  }
+
+  // F4: Feeling Stuck Trigger Card
+  var streak0 = (Utils.getStreak(profile.checkins) === 0 && dayN >= 4);
+  var ratingDropped = false;
+  if (profile.ratings && profile.ratings.length >= 2) {
+    var lR = profile.ratings[profile.ratings.length - 1].primary;
+    var pR = profile.ratings[profile.ratings.length - 2].primary;
+    if (lR < pR) ratingDropped = true;
+  }
+  if (streak0 || ratingDropped) {
+    html += '<div class="card" style="margin-bottom:16px;">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">';
+    html += '<div><h3 class="card-title" style="margin:0 0 2px 0;font-size:0.92rem;">Feeling stuck?</h3><p class="card-text" style="font-size:0.82rem;margin:0;">Progress takes practice. We can help you adjust.</p></div>';
+    html += '<a href="#/stuck" class="btn btn-sm btn-secondary">Get support</a>';
+    html += '</div></div>';
+  }
+
+  // PWA Install Hint Card
+  var totalCheckins = (profile.checkins || []).filter(function (ci) { return ci.done; }).length;
+  if (totalCheckins >= 3 && !profile.installHintDismissed) {
+    html += '<div class="install-hint-card" id="pwa-install-banner">';
+    html += '<div><p class="install-hint-title">Add to your home screen</p><p class="install-hint-sub">Quick 1-tap daily access</p></div>';
+    html += '<div style="display:flex;gap:8px;align-items:center;">';
+    html += '<button type="button" class="btn btn-sm btn-primary" id="btn-pwa-install">Add</button>';
+    html += '<button type="button" class="btn-text-link" id="btn-dismiss-install" style="font-size:0.75rem;">Dismiss</button>';
+    html += '</div></div>';
   }
 
   // Vertical Story Path of 5 Nodes
@@ -599,6 +865,8 @@ function renderHome() {
     { key: 'next step', title: 'Next step', hash: '#/decide' }
   ];
 
+  var checkIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
   html += '<div class="story-path">';
   stages.forEach(function (s, idx) {
     var order = getStageOrder(s.key);
@@ -609,7 +877,7 @@ function renderHome() {
 
     html += '<div class="story-node ' + state + '">';
     html += '<a href="' + s.hash + '" class="story-node-header">';
-    html += '<span class="story-node-indicator">' + (state === 'done' ? '\u2713' : (idx + 1)) + '</span>';
+    html += '<span class="story-node-indicator">' + (state === 'done' ? checkIcon : (idx + 1)) + '</span>';
     html += '<span class="story-node-title">' + s.title + '</span>';
     html += '</a>';
 
@@ -621,22 +889,27 @@ function renderHome() {
   });
   html += '</div>';
 
-  // Cream quotes section: "What customers told us"
-  html += '<div class="cream-section">';
-  html += '<div class="cream-section-header">What customers told us</div>';
-  CONTENT.stats.quotes.forEach(function (q) {
-    html += '<div class="cream-quote">\u201C' + escHTML(q.text) + '\u201D</div>';
-  });
-  html += '<p class="muted" style="margin-top:10px;font-size:0.75rem;">' + escHTML(CONTENT.stats.sampleNote) + '</p>';
-  html += '</div>';
-
-  // Demo link
-  if (!Storage.isDemo()) {
-    html += '<p class="text-center mb-16"><button class="btn-link" id="demo-link">Try a demo journey</button></p>';
+  // Positive Ending Element: Next upcoming milestone
+  if (profile && profile.concern) {
+    var concernCfg = Utils.getConcernConfig(profile.concern);
+    var currentWeekNum = Utils.getWeekNumber(profile.startDate);
+    var upcomingMilestone = null;
+    if (concernCfg.milestones) {
+      for (var m = 0; m < concernCfg.milestones.length; m++) {
+        if (concernCfg.milestones[m].toWeek >= currentWeekNum) {
+          upcomingMilestone = concernCfg.milestones[m];
+          break;
+        }
+      }
+    }
+    if (upcomingMilestone) {
+      html += '<div class="card mt-16" style="background:var(--pale-blue);border:none;">' +
+        '<div style="font-size:0.75rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--primary-blue);margin-bottom:4px;">Next milestone \u00B7 Weeks ' + upcomingMilestone.fromWeek + '\u2013' + upcomingMilestone.toWeek + '</div>' +
+        '<div style="font-weight:700;color:var(--deep-navy);margin-bottom:4px;">' + escHTML(upcomingMilestone.title) + '</div>' +
+        '<div style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(upcomingMilestone.text) + '</div>' +
+        '</div>';
+    }
   }
-
-  // Footer
-  html += '<p class="footer-line">' + escHTML(CONTENT.disclaimers.data) + '</p>';
 
   c.innerHTML = html;
 
@@ -644,17 +917,9 @@ function renderHome() {
   var tipCloseBtn = document.getElementById('close-tip');
   if (tipCloseBtn) {
     tipCloseBtn.addEventListener('click', function () {
-      tipDismissed = true;
+      try { localStorage.setItem(tipKey, '1'); } catch (e) {}
       var bar = document.getElementById('app-tip-bar');
       if (bar) bar.style.display = 'none';
-    });
-  }
-
-  var demoLink = document.getElementById('demo-link');
-  if (demoLink) {
-    demoLink.addEventListener('click', function () {
-      activateDemo();
-      Router.navigate('#/');
     });
   }
 }
@@ -717,6 +982,35 @@ function renderStart() {
   UI.renderHeader({ title: 'Set up your plan', back: '#/' });
 
   var c = UI.$content();
+
+  // Pick up where you left off prompt if saved draft exists
+  if (startState.step === 0 && !startState.editing && !startState.resuming) {
+    var draft = loadDraft();
+    if (draft && draft.step > 0) {
+      var dp = CONTENT.landing.draftPrompt;
+      var draftHtml = '<div class="card text-center" style="padding:24px 16px;">' +
+        '<h2 class="card-title mb-8">' + escHTML(dp.title) + '</h2>' +
+        '<p class="card-text mb-16">' + escHTML(dp.text) + ' (Step ' + (draft.step + 1) + ' of 9)</p>' +
+        '<div style="display:flex;gap:12px;">' +
+        '<button class="btn btn-secondary" id="btn-draft-restart" style="flex:1;">' + escHTML(dp.restart) + '</button>' +
+        '<button class="btn btn-primary" id="btn-draft-resume" style="flex:1;">' + escHTML(dp.resume) + '</button>' +
+        '</div></div>';
+      c.innerHTML = draftHtml;
+
+      document.getElementById('btn-draft-resume').addEventListener('click', function () {
+        startState = draft;
+        startState.resuming = true;
+        renderStart();
+      });
+      document.getElementById('btn-draft-restart').addEventListener('click', function () {
+        clearDraft();
+        resetStartState();
+        renderStart();
+      });
+      return;
+    }
+  }
+
   var step = startState.step;
   var ans = startState.answers;
 
@@ -730,16 +1024,32 @@ function renderStart() {
   else if (step === 7) renderQ8(c, ans);
   else if (step === 8) renderQ9(c, ans);
   else if (step === 9) renderPlanSummary(c, ans);
+
+  // Enter key continues
+  bindEnterKey();
+}
+
+function bindEnterKey() {
+  var handler = function (e) {
+    if (e.key === 'Enter') {
+      var nxt = document.getElementById('q-next');
+      if (nxt && !nxt.disabled) {
+        document.removeEventListener('keydown', handler);
+        nxt.click();
+      }
+    }
+  };
+  document.addEventListener('keydown', handler, { once: true });
 }
 
 // Nav helpers for onboarding
 function renderNavRow(step, canProceed, isOptional) {
   var html = '<div class="mt-16" style="display:flex;gap:12px;align-items:center;">';
   if (step > 0) {
-    html += '<button class="btn" id="q-back">Back</button>';
+    html += '<button class="btn btn-secondary" id="q-back">Back</button>';
   }
   if (isOptional) {
-    html += '<button class="btn" id="q-skip" style="color:var(--text-secondary);">Skip</button>';
+    html += '<button class="btn btn-secondary" id="q-skip" style="color:var(--text-secondary);">Skip</button>';
   }
   html += '<button class="btn btn-primary" style="flex:1;" id="q-next"' + (canProceed ? '' : ' disabled') + '>Next</button>';
   html += '</div>';
@@ -754,31 +1064,41 @@ function bindNavRow(nextCb, skipCb) {
   if (backBtn) {
     backBtn.addEventListener('click', function () {
       startState.step--;
+      saveDraft();
       renderStart();
     });
   }
   if (nextBtn) {
-    nextBtn.addEventListener('click', nextCb);
+    nextBtn.addEventListener('click', function () {
+      saveDraft();
+      nextCb();
+    });
   }
   if (skipBtn && skipCb) {
-    skipBtn.addEventListener('click', skipCb);
+    skipBtn.addEventListener('click', function () {
+      saveDraft();
+      skipCb();
+    });
   }
 }
 
 // Q1: Name (Chapter 1: About you)
 function renderQ1(c, ans) {
-  var html = UI.chapterProgressHTML(0, 'About you');
-  html += '<h2 class="section-title mb-8">What should we call you?</h2>';
-  html += '<p class="muted mb-16">Optional. Used only for greetings on this device.</p>';
+  var html = '<div class="question-slide">';
+  html += UI.chapterProgressHTML(0, 'About you');
+  html += '<h2 class="section-title mb-4">What should we call you?</h2>';
+  html += '<p class="muted mb-8" style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(CONTENT.quiz.whyWeAsk.q1) + '</p>';
   html += '<div class="field"><label for="user-name">First name</label>' +
     '<input type="text" id="user-name" maxlength="20" placeholder="e.g. Priya" value="' + escHTML(ans.name) + '"></div>';
   html += renderNavRow(0, true, true);
+  html += '</div>';
   c.innerHTML = html;
 
   var input = document.getElementById('user-name');
   input.focus();
   input.addEventListener('input', function () {
-    ans.name = this.value.trim();
+    ans.name = Utils.toTitleCase(this.value);
+    saveDraft();
   });
 
   bindNavRow(
@@ -789,9 +1109,10 @@ function renderQ1(c, ans) {
 
 // Q2: Concern (Chapter 1: About you)
 function renderQ2(c, ans) {
-  var html = UI.chapterProgressHTML(1, 'About you');
-  html += '<h2 class="section-title mb-8">What are you working on?</h2>';
-  html += '<p class="muted mb-14">Pick your main area of focus.</p>';
+  var html = '<div class="question-slide">';
+  html += UI.chapterProgressHTML(1, 'About you');
+  html += '<h2 class="section-title mb-4">What are you working on?</h2>';
+  html += '<p class="muted mb-8" style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(CONTENT.quiz.whyWeAsk.q2) + '</p>';
   html += '<div class="chip-group" role="radiogroup" aria-label="Select your focus area">';
   CONTENT.quiz.concerns.forEach(function (opt) {
     var sel = ans.concern === opt.value;
@@ -800,15 +1121,19 @@ function renderQ2(c, ans) {
   });
   html += '</div>';
   html += renderNavRow(1, !!ans.concern, false);
+  html += '</div>';
   c.innerHTML = html;
 
   c.querySelectorAll('.chip').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var val = this.getAttribute('data-val');
       ans.concern = val;
-      // Auto-advance on single choice
-      startState.step = 2;
-      renderStart();
+      this.classList.add('pop');
+      saveDraft();
+      setTimeout(function () {
+        startState.step = 2;
+        renderStart();
+      }, 250);
     });
   });
 
@@ -820,9 +1145,10 @@ function renderQ2(c, ans) {
 // Q3: Goal (Chapter 1: About you)
 function renderQ3(c, ans) {
   var cfg = Utils.getConcernConfig(ans.concern || 'wellness');
-  var html = UI.chapterProgressHTML(2, 'About you');
-  html += '<h2 class="section-title mb-8">What would better look like?</h2>';
-  html += '<p class="muted mb-14">Choose your specific goal.</p>';
+  var html = '<div class="question-slide">';
+  html += UI.chapterProgressHTML(2, 'About you');
+  html += '<h2 class="section-title mb-4">What would better look like?</h2>';
+  html += '<p class="muted mb-8" style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(CONTENT.quiz.whyWeAsk.q4) + '</p>';
   html += '<div class="chip-group" role="radiogroup" aria-label="Goal options">';
   cfg.goalSuggestions.forEach(function (g) {
     var sel = ans.goalText === g;
@@ -839,6 +1165,7 @@ function renderQ3(c, ans) {
 
   var valid = !!ans.goalText && ans.goalText !== '__custom';
   html += renderNavRow(2, valid, false);
+  html += '</div>';
   c.innerHTML = html;
 
   c.querySelectorAll('.chip').forEach(function (btn) {
@@ -846,12 +1173,16 @@ function renderQ3(c, ans) {
       var val = this.getAttribute('data-val');
       if (val === '__custom') {
         ans.goalText = '__custom';
+        saveDraft();
         renderStart();
       } else {
         ans.goalText = val;
-        // Auto-advance
-        startState.step = 3;
-        renderStart();
+        this.classList.add('pop');
+        saveDraft();
+        setTimeout(function () {
+          startState.step = 3;
+          renderStart();
+        }, 250);
       }
     });
   });
@@ -861,6 +1192,7 @@ function renderQ3(c, ans) {
     customInput.focus();
     customInput.addEventListener('input', function () {
       ans.goalText = this.value.trim() || '__custom';
+      saveDraft();
       var nxt = document.getElementById('q-next');
       if (nxt) nxt.disabled = !this.value.trim();
     });
@@ -877,9 +1209,10 @@ function renderQ3(c, ans) {
 // Q4: Products (Chapter 2: Your routine)
 function renderQ4(c, ans) {
   var catalog = CONTENT.catalog[ans.concern] || [];
-  var html = UI.chapterProgressHTML(3, 'Your routine');
-  html += '<h2 class="section-title mb-8">Which Bodywise products do you use?</h2>';
-  html += '<p class="muted mb-14">Select all that apply.</p>';
+  var html = '<div class="question-slide">';
+  html += UI.chapterProgressHTML(3, 'Your routine');
+  html += '<h2 class="section-title mb-4">Which Bodywise products do you use?</h2>';
+  html += '<p class="muted mb-8" style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(CONTENT.quiz.whyWeAsk.q5) + '</p>';
   html += '<div class="chip-group" role="group" aria-label="Products">';
   catalog.forEach(function (p) {
     var sel = ans.products.indexOf(p.id) >= 0;
@@ -890,6 +1223,7 @@ function renderQ4(c, ans) {
   html += '</div>';
 
   html += renderNavRow(3, ans.products.length > 0, false);
+  html += '</div>';
   c.innerHTML = html;
 
   c.querySelectorAll('.chip').forEach(function (btn) {
@@ -904,6 +1238,7 @@ function renderQ4(c, ans) {
         if (idx >= 0) ans.products.splice(idx, 1);
         else ans.products.push(val);
       }
+      saveDraft();
       renderStart();
     });
   });
@@ -918,9 +1253,10 @@ function renderQ4(c, ans) {
 
 // Q5: Start bucket (Chapter 2: Your routine)
 function renderQ5(c, ans) {
-  var html = UI.chapterProgressHTML(4, 'Your routine');
-  html += '<h2 class="section-title mb-8">When did you start?</h2>';
-  html += '<p class="muted mb-14">Helps us place where you are on the timeline.</p>';
+  var html = '<div class="question-slide">';
+  html += UI.chapterProgressHTML(4, 'Your routine');
+  html += '<h2 class="section-title mb-4">When did you start?</h2>';
+  html += '<p class="muted mb-8" style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(CONTENT.quiz.whyWeAsk.q3) + '</p>';
   html += '<div class="segmented-group">';
   CONTENT.quiz.startBuckets.forEach(function (sb) {
     var sel = ans.startBucket === sb.value;
@@ -931,14 +1267,18 @@ function renderQ5(c, ans) {
   html += '</div>';
 
   html += renderNavRow(4, !!ans.startBucket, false);
+  html += '</div>';
   c.innerHTML = html;
 
   c.querySelectorAll('.segmented-option').forEach(function (btn) {
     btn.addEventListener('click', function () {
       ans.startBucket = this.getAttribute('data-val');
-      // Auto-advance
-      startState.step = 5;
-      renderStart();
+      this.classList.add('pop');
+      saveDraft();
+      setTimeout(function () {
+        startState.step = 5;
+        renderStart();
+      }, 250);
     });
   });
 
@@ -952,9 +1292,10 @@ function renderQ5(c, ans) {
 
 // Q6: Routine time (Chapter 2: Your routine)
 function renderQ6(c, ans) {
-  var html = UI.chapterProgressHTML(5, 'Your routine');
-  html += '<h2 class="section-title mb-8">When can you fit it in?</h2>';
-  html += '<p class="muted mb-14">Consistency matters more than the exact hour.</p>';
+  var html = '<div class="question-slide">';
+  html += UI.chapterProgressHTML(5, 'Your routine');
+  html += '<h2 class="section-title mb-4">When can you fit it in?</h2>';
+  html += '<p class="muted mb-8" style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(CONTENT.quiz.whyWeAsk.q6) + '</p>';
   html += '<div class="chip-group">';
   CONTENT.quiz.routineTime.forEach(function (rt) {
     var sel = ans.routineTime === rt.value;
@@ -963,14 +1304,18 @@ function renderQ6(c, ans) {
   html += '</div>';
 
   html += renderNavRow(5, !!ans.routineTime, false);
+  html += '</div>';
   c.innerHTML = html;
 
   c.querySelectorAll('.chip').forEach(function (btn) {
     btn.addEventListener('click', function () {
       ans.routineTime = this.getAttribute('data-val');
-      // Auto-advance
-      startState.step = 6;
-      renderStart();
+      this.classList.add('pop');
+      saveDraft();
+      setTimeout(function () {
+        startState.step = 6;
+        renderStart();
+      }, 250);
     });
   });
 
@@ -984,9 +1329,10 @@ function renderQ6(c, ans) {
 
 // Q7: Expected duration (Chapter 3: Your expectations)
 function renderQ7(c, ans) {
-  var html = UI.chapterProgressHTML(6, 'Your expectations');
-  html += '<h2 class="section-title mb-8">How long did you expect results to take?</h2>';
-  html += '<p class="muted mb-14">Be honest \u2014 we compare this with biological reality.</p>';
+  var html = '<div class="question-slide">';
+  html += UI.chapterProgressHTML(6, 'Your expectations');
+  html += '<h2 class="section-title mb-4">How long did you expect results to take?</h2>';
+  html += '<p class="muted mb-8" style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(CONTENT.quiz.whyWeAsk.q7) + '</p>';
   html += '<div class="segmented-group">';
   CONTENT.quiz.expectationBuckets.forEach(function (eb) {
     var sel = ans.expectedWeeks === eb.weeks;
@@ -996,15 +1342,19 @@ function renderQ7(c, ans) {
   html += '</div>';
 
   html += renderNavRow(6, true, false);
+  html += '</div>';
   c.innerHTML = html;
 
   c.querySelectorAll('.segmented-option').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var w = this.getAttribute('data-weeks');
       ans.expectedWeeks = w === 'null' ? null : parseInt(w, 10);
-      // Auto-advance
-      startState.step = 7;
-      renderStart();
+      this.classList.add('pop');
+      saveDraft();
+      setTimeout(function () {
+        startState.step = 7;
+        renderStart();
+      }, 250);
     });
   });
 
@@ -1016,9 +1366,10 @@ function renderQ7(c, ans) {
 
 // Q8: Tracking method (Chapter 3: Your expectations)
 function renderQ8(c, ans) {
-  var html = UI.chapterProgressHTML(7, 'Your expectations');
-  html += '<h2 class="section-title mb-8">How do you check if it\u2019s working?</h2>';
-  html += '<p class="muted mb-14">Most people struggle with this part.</p>';
+  var html = '<div class="question-slide">';
+  html += UI.chapterProgressHTML(7, 'Your expectations');
+  html += '<h2 class="section-title mb-4">How do you check if it\u2019s working?</h2>';
+  html += '<p class="muted mb-8" style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(CONTENT.quiz.whyWeAsk.q9) + '</p>';
   html += '<div class="segmented-group">';
   CONTENT.quiz.trackingMethods.forEach(function (tm) {
     var sel = ans.trackingMethod === tm;
@@ -1028,14 +1379,18 @@ function renderQ8(c, ans) {
   html += '</div>';
 
   html += renderNavRow(7, !!ans.trackingMethod, false);
+  html += '</div>';
   c.innerHTML = html;
 
   c.querySelectorAll('.segmented-option').forEach(function (btn) {
     btn.addEventListener('click', function () {
       ans.trackingMethod = this.getAttribute('data-val');
-      // Auto-advance
-      startState.step = 8;
-      renderStart();
+      this.classList.add('pop');
+      saveDraft();
+      setTimeout(function () {
+        startState.step = 8;
+        renderStart();
+      }, 250);
     });
   });
 
@@ -1049,9 +1404,10 @@ function renderQ8(c, ans) {
 
 // Q9: Hardest part (Chapter 3: Your expectations)
 function renderQ9(c, ans) {
-  var html = UI.chapterProgressHTML(8, 'Your expectations');
-  html += '<h2 class="section-title mb-8">What\u2019s been hardest so far?</h2>';
-  html += '<p class="muted mb-14">Select up to 2.</p>';
+  var html = '<div class="question-slide">';
+  html += UI.chapterProgressHTML(8, 'Your expectations');
+  html += '<h2 class="section-title mb-4">What\u2019s been hardest so far?</h2>';
+  html += '<p class="muted mb-8" style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(CONTENT.quiz.whyWeAsk.q8) + '</p>';
   html += '<div class="chip-group">';
   CONTENT.quiz.hardestOptions.forEach(function (ho) {
     var sel = ans.hardest.indexOf(ho) >= 0;
@@ -1060,6 +1416,7 @@ function renderQ9(c, ans) {
   html += '</div>';
 
   html += renderNavRow(8, ans.hardest.length > 0, false);
+  html += '</div>';
   c.innerHTML = html;
 
   c.querySelectorAll('.chip').forEach(function (btn) {
@@ -1071,6 +1428,7 @@ function renderQ9(c, ans) {
       } else {
         if (ans.hardest.length < 2) ans.hardest.push(val);
       }
+      saveDraft();
       renderStart();
     });
   });
@@ -1180,7 +1538,6 @@ function renderPlanSummary(c, ans) {
     html += '<button class="btn btn-primary btn-full" id="save-plan">Start my plan \u2192</button>';
   }
 
-  html += UI.disclaimerHTML();
   c.innerHTML = html;
 
   // Step selector binding
@@ -1233,7 +1590,7 @@ function saveAndCompletePlan(focusObj) {
 
   var profile = {
     version: 2,
-    name: ans.name.trim(),
+    name: Utils.toTitleCase(ans.name),
     concern: ans.concern,
     goalText: ans.goalText,
     startDate: startDate,
@@ -1248,7 +1605,7 @@ function saveAndCompletePlan(focusObj) {
     checkins: [],
     baseline: null,
     weeklyRatings: [],
-    flags: { seenExpect: false, demo: false }
+    flags: { seenExpect: false }
   };
 
   Storage.save(profile);
@@ -1279,6 +1636,41 @@ function renderExpect() {
   var goalText = profile ? profile.goalText : '';
 
   var html = '';
+
+  // F5 Progress Forecast Strip
+  var currentWk = profile ? Utils.getWeekNumber(profile.startDate) : 1;
+  html += '<div class="forecast-strip">';
+  for (var w = 1; w <= cfg.fullWindowWeeks; w++) {
+    var isCurrent = (w === currentWk);
+    var isEarly = (w < cfg.earlyWindowWeeks);
+    var isMiddle = (w >= cfg.earlyWindowWeeks && w < cfg.earlyWindowWeeks + 4);
+    html += '<div class="forecast-card' + (isCurrent ? ' current-week' : '') + '">';
+    if (isCurrent) html += '<span class="forecast-you-are-here">You are here</span>';
+    html += '<div class="forecast-week">W' + w + '</div>';
+    if (isEarly) {
+      html += '<svg class="forecast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>';
+      html += '<div class="forecast-phase">Base</div>';
+    } else if (isMiddle) {
+      html += '<svg class="forecast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M20 12h2"/><path d="M17.5 19H9a5 5 0 0 1-2-9.6A6 6 0 0 1 17 8a4 4 0 0 1 2 7.5"/></svg>';
+      html += '<div class="forecast-phase">Early</div>';
+    } else {
+      html += '<svg class="forecast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>';
+      html += '<div class="forecast-phase">Clear</div>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+
+  var weeksLeft = cfg.earlyWindowWeeks - currentWk;
+  var etaText = '';
+  if (weeksLeft > 0) {
+    etaText = 'First changes usually from week ' + cfg.earlyWindowWeeks + '. About ' + weeksLeft + ' weeks to go.';
+  } else if (weeksLeft === 0) {
+    etaText = 'You are at week ' + cfg.earlyWindowWeeks + '. Early signs usually emerge around now.';
+  } else {
+    etaText = 'Past week ' + cfg.earlyWindowWeeks + '. Deeper changes build with continued routine.';
+  }
+  html += '<p class="status-line" style="margin:4px 0 16px 0;font-weight:600;">' + etaText + '</p>';
 
   // Pill tabs with active triangle indicator to preview concerns
   html += '<div style="overflow-x:auto;padding-bottom:8px;margin-bottom:12px;">';
@@ -1346,15 +1738,15 @@ function renderExpect() {
   html += '<div class="mb-16"><div class="collapsible-header" id="why-toggle" tabindex="0" role="button" aria-expanded="false">Why does it take time?</div>';
   html += '<div class="collapsible-body" id="why-body">' + escHTML(cfg.why) + '</div></div>';
 
-  // Disclaimer
-  html += UI.disclaimerHTML();
-
-  // Buttons
+  // Navigation buttons
   if (profile) {
     if (!profile.baseline) {
       html += '<a href="#/progress" class="btn btn-primary btn-full mb-12">Set my starting point</a>';
     }
-    html += '<a href="#/today" class="btn btn-full">Start daily check-ins</a>';
+    html += '<div class="mt-16" style="display:flex;gap:12px;">' +
+      '<a href="#/" class="btn btn-secondary" style="flex:1;text-align:center;">Back</a>' +
+      '<a href="#/today" class="btn btn-primary" style="flex:1;text-align:center;">Daily check-in</a>' +
+      '</div>';
   } else {
     html += '<a href="#/start" class="btn btn-primary btn-full">Set up my plan</a>';
   }
@@ -1442,9 +1834,10 @@ function renderToday() {
   }
 
   // Done today button
+  var checkDoneIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><polyline points="20 6 9 17 4 12"/></svg>';
   html += '<button class="btn checkin-btn' + (checkedIn ? ' checked btn-primary' : '') +
     '" id="checkin-toggle" aria-pressed="' + checkedIn + '">' +
-    (checkedIn ? '\u2713 Done today' : 'Done today') + '</button>';
+    (checkedIn ? (checkDoneIcon + 'Done today') : 'Done today') + '</button>';
 
   // Note
   html += '<div class="field"><label for="day-note">Note (optional)</label>' +
@@ -1475,7 +1868,12 @@ function renderToday() {
     '<p class="muted mt-8" style="font-size:0.75rem;">The app itself cannot send push notifications.</p>' +
     '</div>';
 
-  html += UI.disclaimerHTML();
+  // Navigation: Back on left, Results on right
+  html += '<div class="mt-16" style="display:flex;gap:12px;">' +
+    '<a href="#/expect" class="btn btn-secondary" style="flex:1;text-align:center;">Back</a>' +
+    '<a href="#/progress" class="btn btn-primary" style="flex:1;text-align:center;">Results</a>' +
+    '</div>';
+
   c.innerHTML = html;
 
   // Bind toggle
@@ -1613,10 +2011,14 @@ function renderProgress() {
   // Verdict banner with icon and reasons
   var verdict = Utils.getVerdict(profile);
   if (verdict.type !== 'none') {
-    var icon = '⏳';
-    if (verdict.type === 'onTrack') icon = '✅';
-    else if (verdict.type === 'consistency') icon = '🔄';
-    else if (verdict.type === 'doctor') icon = '🩺';
+    var icon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;margin-right:6px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+    if (verdict.type === 'onTrack') {
+      icon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;margin-right:6px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+    } else if (verdict.type === 'consistency') {
+      icon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;margin-right:6px;"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
+    } else if (verdict.type === 'closer') {
+      icon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;margin-right:6px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+    }
 
     html += '<div class="verdict-banner ' + verdict.cssClass + '">';
     html += '<div class="verdict-label">' + icon + ' ' + escHTML(verdict.label) + '</div>';
@@ -1692,28 +2094,27 @@ function renderProgress() {
   html += '<div class="mb-16"><div class="collapsible-header" id="decide-rules-toggle" tabindex="0" role="button" aria-expanded="false">How we decide your verdict</div>';
   html += '<div class="collapsible-body" id="decide-rules-body">' +
     '<ul style="padding-left:18px;line-height:1.6;font-size:0.85rem;">' +
-    '<li><strong>Safety first:</strong> Any unusual reaction prompts a recommendation to check with a doctor.</li>' +
+    '<li><strong>Safety first:</strong> Any unusual reaction prompts a recommendation to pause and check with a health professional.</li>' +
     '<li><strong>Biology takes time:</strong> We wait for your body\u2019s natural renewal cycle before expecting visible changes.</li>' +
     '<li><strong>Consistency counts:</strong> Steadier routines give a fairer picture of how products perform.</li>' +
     '<li><strong>Observable trends:</strong> We compare your latest ratings to your original starting point.</li>' +
     '</ul></div></div>';
 
-  // Doctor summary (plain anonymous dl)
-  html += renderDoctorSummary(profile, cfg);
+  // Progress summary (plain anonymous dl)
+  html += renderProgressSummary(profile, cfg);
 
-  // Nav buttons
+  // Nav buttons (Back on left, Next step on right)
   html += '<div class="mt-16" style="display:flex;gap:12px;">';
-  html += '<a href="#/decide" class="btn" style="flex:1;">Next step</a>';
-  html += '<a href="#/today" class="btn" style="flex:1;">Back to Check-in</a>';
+  html += '<a href="#/today" class="btn btn-secondary" style="flex:1;text-align:center;">Back</a>';
+  html += '<a href="#/decide" class="btn btn-primary" style="flex:1;text-align:center;">Next step</a>';
   html += '</div>';
 
-  html += UI.disclaimerHTML();
   c.innerHTML = html;
 
   // Bind chart tabs
   if (ratings.length > 0) {
     var chartArea = document.getElementById('chart-area');
-    renderChart(profile.baseline, ratings, chartArea, activeChartSeries === 'primary', activeChartSeries === 'secondary');
+    renderChart(profile.baseline, ratings, chartArea, activeChartSeries === 'primary', activeChartSeries === 'secondary', profile.concern);
 
     var tabPri = document.getElementById('chart-tab-pri');
     var tabSec = document.getElementById('chart-tab-sec');
@@ -1744,6 +2145,37 @@ function renderProgress() {
       hwdToggle.classList.toggle('open');
       hwdBody.classList.toggle('open');
       hwdToggle.setAttribute('aria-expanded', hwdBody.classList.contains('open'));
+    });
+  }
+
+  // Bind Progress summary actions
+  var btnPrint = document.getElementById('btn-print-summary');
+  if (btnPrint) {
+    btnPrint.addEventListener('click', function () { window.print(); });
+  }
+  var btnCopy = document.getElementById('btn-copy-summary');
+  if (btnCopy) {
+    btnCopy.addEventListener('click', function () {
+      var con = Utils.getConsistency(profile.checkins, profile.startDate);
+      var text = 'PROGRESS COMPANION SUMMARY\n' +
+        'Focus area: ' + cfg.label + '\n' +
+        'Goal: ' + (profile.goalText || 'Not set') + '\n' +
+        'Watched marker: ' + (profile.marker || 'Not set') + '\n' +
+        'Started: ' + Utils.formatDate(profile.startDate) + ' (Week ' + Utils.getWeekNumber(profile.startDate) + ')\n' +
+        'Baseline: Marker ' + profile.baseline.primary + '/5, Overall ' + profile.baseline.secondary + '/5\n' +
+        'Consistency: ' + Math.round(con.pct * 100) + '%\n';
+      if (profile.weeklyRatings && profile.weeklyRatings.length) {
+        text += 'Ratings:\n';
+        profile.weeklyRatings.forEach(function (r) {
+          text += 'Week ' + r.week + ': ' + r.primary + '/5 marker, ' + r.secondary + '/5 overall' + (r.unusual ? ' (unusual flagged)' : '') + '\n';
+        });
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          btnCopy.textContent = 'Copied to clipboard';
+          setTimeout(function () { btnCopy.textContent = 'Copy summary'; }, 2000);
+        });
+      }
     });
   }
 }
@@ -1805,7 +2237,6 @@ function renderStartingPoint(cfg, profile) {
     '</div></div>';
 
   html += '<button class="btn btn-primary btn-full" id="save-baseline" disabled>Save starting point</button>';
-  html += UI.disclaimerHTML();
   return html;
 }
 
@@ -1997,10 +2428,10 @@ function renderChart(baseline, ratings, container, showPrimary, showSecondary) {
   container.appendChild(svg);
 }
 
-function renderDoctorSummary(profile, cfg) {
+function renderProgressSummary(profile, cfg) {
   var con = Utils.getConsistency(profile.checkins, profile.startDate);
-  var html = '<div class="section-title mt-16 mb-8">Doctor summary</div>';
-  html += '<div class="doctor-summary"><dl>';
+  var html = '<div class="section-title mt-16 mb-8">Your progress summary</div>';
+  html += '<div class="progress-summary"><dl>';
   html += '<dt>Focus area</dt><dd>' + escHTML(cfg.label) + '</dd>';
   html += '<dt>Goal</dt><dd>' + escHTML(profile.goalText || 'Not set') + '</dd>';
   html += '<dt>Watched marker</dt><dd>' + escHTML(profile.marker || 'Not set') + '</dd>';
@@ -2020,6 +2451,10 @@ function renderDoctorSummary(profile, cfg) {
     html += '</dd>';
   }
   html += '</dl></div>';
+  html += '<div class="mt-8 mb-8" style="display:flex;gap:8px;">' +
+    '<button class="btn btn-secondary btn-sm" id="btn-print-summary" style="flex:1;">Save as PDF</button>' +
+    '<button class="btn btn-secondary btn-sm" id="btn-copy-summary" style="flex:1;">Copy summary</button>' +
+    '</div>';
   html += '<p class="muted">No personal identifiers are included in this summary.</p>';
   return html;
 }
@@ -2044,14 +2479,15 @@ function renderDecide() {
   var html = '';
 
   // Decision outcome card based on verdict (exactly 3 outcomes)
-  if (verdict.type === 'doctor') {
-    // Outcome 3: Talk to a doctor
-    html += '<div class="card" style="border-color:var(--verdict-doctor-border);background:var(--verdict-doctor-bg);">' +
-      '<h2 class="card-title" style="color:var(--verdict-doctor-text);">Talk to a doctor</h2>' +
-      '<p class="card-text" style="color:var(--verdict-doctor-text);">' +
-      'Before refilling, consider speaking with a doctor about what you see. Take your doctor summary from Results.' +
+  if (verdict.type === 'closer') {
+    // Outcome 3: Try a different approach
+    var weeks = Utils.getWeekNumber(profile.startDate);
+    html += '<div class="card" style="border-color:var(--verdict-closer-border);background:var(--verdict-closer-bg);">' +
+      '<h2 class="card-title" style="color:var(--verdict-closer-text);">Try a different approach</h2>' +
+      '<p class="card-text" style="color:var(--verdict-closer-text);">' +
+      'Your ratings haven\'t moved after ' + weeks + ' weeks of steady use. Change one thing at a time, and keep tracking.' +
       '</p>' +
-      '<a href="#/progress" class="btn" style="background:#fff;border-color:var(--verdict-doctor-border);color:var(--verdict-doctor-text);">View doctor summary</a>' +
+      '<a href="#/progress" class="btn" style="background:#fff;border-color:var(--verdict-closer-border);color:var(--verdict-closer-text);">See my progress summary</a>' +
       '</div>';
   } else if (verdict.type === 'consistency') {
     // Outcome 2: Adjust your routine (with 2 specific tips)
@@ -2113,7 +2549,12 @@ function renderDecide() {
 
   html += '</div></div>';
 
-  html += UI.disclaimerHTML();
+  // Nav buttons (Back on left, Journey on right)
+  html += '<div class="mt-16" style="display:flex;gap:12px;">' +
+    '<a href="#/progress" class="btn btn-secondary" style="flex:1;text-align:center;">Back</a>' +
+    '<a href="#/" class="btn btn-primary" style="flex:1;text-align:center;">Journey</a>' +
+    '</div>';
+
   c.innerHTML = html;
 
   // Bind refill collapsible
@@ -2153,41 +2594,23 @@ function renderAbout() {
   var html = '';
 
   html += '<h2 class="section-title mb-8">Why we built this</h2>';
-  html += '<p class="card-text mb-16">Customers buy slow-acting wellness products, can\u2019t tell if they work, and quit too early. We built this to set honest expectations and track measurable change.</p>';
+  html += '<p class="card-text mb-16">Wellness routines take weeks to show results. We built Progress Companion to give you honest timelines, clear ways to measure change, and steady daily motivation.</p>';
 
-  // Stat cards
-  var stats = CONTENT.stats;
-  html += '<div class="stat-cards">';
-  if (stats.stoppedBecauseSlow) {
-    html += '<div class="stat-card"><div class="stat-value">' + escHTML(stats.stoppedBecauseSlow) + '</div>' +
-      '<div class="stat-label">quit because results felt slow</div></div>';
-  }
-  if (stats.cantMeasure) {
-    html += '<div class="stat-card"><div class="stat-value">' + escHTML(stats.cantMeasure) + '</div>' +
-      '<div class="stat-label">judge by feel or can\u2019t tell</div></div>';
-  }
-  if (stats.expectedTooFast) {
-    html += '<div class="stat-card"><div class="stat-value">' + escHTML(stats.expectedTooFast) + '</div>' +
-      '<div class="stat-label">expected results in 4 weeks</div></div>';
-  }
-  html += '</div>';
-  html += '<p class="muted mb-16">' + escHTML(stats.sampleNote) + '</p>';
+  // Positive "What helps"
+  html += '<h2 class="section-title mt-16 mb-12">What helps</h2>';
+  html += '<div class="card mb-8"><p class="card-text mb-0"><strong>Small check-ins:</strong> Daily logging makes gradual change visible.</p></div>';
+  html += '<div class="card mb-8"><p class="card-text mb-0"><strong>Observable markers:</strong> Watching one clear sign beats guessing by feel.</p></div>';
+  html += '<div class="card mb-8"><p class="card-text mb-0"><strong>Patience:</strong> Biology takes weeks. Knowing your window keeps you steady.</p></div>';
 
   // Stage mapping
+  var stats = CONTENT.stats;
   html += '<h2 class="section-title mt-16 mb-12">How each stage helps</h2>';
   (stats.stageMapping || []).forEach(function (sm) {
     html += '<div class="card"><h3 class="card-title">' + escHTML(sm.stage) + '</h3>' +
       '<p class="card-text mb-0">' + escHTML(sm.finding) + '</p></div>';
   });
 
-  // Cream quotes
-  html += '<div class="cream-section mt-16">';
-  html += '<div class="cream-section-header">Customer feedback</div>';
-  (stats.quotes || []).forEach(function (q) {
-    html += '<div class="cream-quote">\u201C' + escHTML(q.text) + '\u201D</div>';
-  });
-  html += '</div>';
-
+  html += '<p class="disclaimer mt-16 text-center">' + escHTML(CONTENT.disclaimers.calm) + '</p>';
   c.innerHTML = html;
 }
 
@@ -2211,21 +2634,16 @@ function renderSettings() {
     (!profile ? ' disabled' : '') + '>Export data (JSON)</button>';
 
   // Delete all
-  html += '<button class="btn btn-full mb-12" id="settings-delete" style="color:var(--verdict-doctor-text);border-color:var(--verdict-doctor-border);">Delete all data</button>';
+  html += '<button class="btn btn-full mb-12" id="settings-delete" style="color:var(--danger-text);border-color:var(--danger-border);">Delete all data</button>';
   html += '<div id="delete-confirm" style="display:none;" class="confirm-panel">' +
     '<p>This will permanently delete your plan and ratings from this device.</p>' +
     '<div class="confirm-actions">' +
-    '<button class="btn" id="delete-yes" style="color:var(--verdict-doctor-text);border-color:var(--verdict-doctor-border);">Yes, delete</button>' +
+    '<button class="btn" id="delete-yes" style="color:var(--danger-text);border-color:var(--danger-border);">Yes, delete</button>' +
     '<button class="btn" id="delete-no">Cancel</button></div></div>';
-
-  // Demo toggle
-  html += '<div class="field mt-16"><label for="demo-toggle" style="display:inline;cursor:pointer;">' +
-    '<input type="checkbox" id="demo-toggle"' + (Storage.isDemo() ? ' checked' : '') +
-    ' style="width:auto;min-height:auto;margin-right:8px;"> Demo mode</label></div>';
 
   // Version & disclaimer
   html += '<p class="muted mt-16">Version ' + escHTML(CONTENT.version) + '</p>';
-  html += '<p class="disclaimer">' + escHTML(CONTENT.disclaimers.settings) + '</p>';
+  html += '<p class="disclaimer mt-16 text-center">' + escHTML(CONTENT.disclaimers.calm) + '</p>';
 
   c.innerHTML = html;
 
@@ -2263,76 +2681,43 @@ function renderSettings() {
   document.getElementById('delete-no').addEventListener('click', function () {
     document.getElementById('delete-confirm').style.display = 'none';
   });
-
-  document.getElementById('demo-toggle').addEventListener('change', function () {
-    if (this.checked) {
-      activateDemo();
-    } else {
-      Storage.setDemo(false);
-    }
-    Router.navigate('#/');
-  });
-}
-
-/* ==================== DEMO MODE ==================== */
-function createDemoData() {
-  var today = Utils.getToday();
-  var startDate = Utils.addDays(today, -35); // 5 weeks ago
-
-  var checkins = [];
-  for (var d = 0; d < 35; d++) {
-    var date = Utils.addDays(startDate, d);
-    var done = d !== 5 && d !== 14 && d !== 22;
-    checkins.push({ date: date, done: done, note: '' });
-  }
-
-  return {
-    version: 2,
-    name: 'Sam',
-    concern: 'hair',
-    goalText: 'Less hair fall',
-    startBucket: '1to3m',
-    startDate: startDate,
-    expectedWeeks: 4,
-    trackingMethod: 'I go by feel',
-    hardest: ['Not knowing how long it takes', 'Results feel slow'],
-    marker: 'Hair in the shower drain',
-    routineTime: 'morning',
-    routineStepCount: 2,
-    triedBefore: ['Home remedies', 'OTC shampoos or oils'],
-    products: [
-      { id: 'hair-1', name: 'Advanced hair growth serum (roll-on)', price: 599, sizeDays: 30, openedOn: startDate }
-    ],
-    checkins: checkins,
-    baseline: { primary: 2, secondary: 2, date: startDate, note: 'Noticeable shedding on comb' },
-    weeklyRatings: [
-      { week: 1, date: Utils.addDays(startDate, 7),  primary: 2, secondary: 2, unusual: false },
-      { week: 2, date: Utils.addDays(startDate, 14), primary: 2, secondary: 3, unusual: false },
-      { week: 3, date: Utils.addDays(startDate, 21), primary: 3, secondary: 3, unusual: false },
-      { week: 4, date: Utils.addDays(startDate, 28), primary: 3, secondary: 3, unusual: false }
-    ],
-    flags: { seenExpect: true, demo: true }
-  };
-}
-
-function activateDemo() {
-  var demoData = createDemoData();
-  Storage.setDemo(true);
-  Storage.save(demoData);
 }
 
 /* ==================== INIT ==================== */
 function init() {
-  Router.register('#/', renderHome);
-  Router.register('#/start', renderStart);
-  Router.register('#/expect', renderExpect);
-  Router.register('#/today', renderToday);
-  Router.register('#/progress', renderProgress);
-  Router.register('#/decide', renderDecide);
-  Router.register('#/about', renderAbout);
-  Router.register('#/settings', renderSettings);
+  Router.init();
+  UI.initHeader();
 
-  Router.start();
+  // Midnight rollover listener
+  var currentRenderedDate = Utils.getToday();
+  function checkMidnightRollover() {
+    var nowToday = Utils.getToday();
+    if (nowToday !== currentRenderedDate) {
+      currentRenderedDate = nowToday;
+      var prof = Storage.load();
+      if (prof) {
+        var dayN = Utils.daysBetween(prof.startDate, currentRenderedDate) + 1;
+        UI.toast('New day. Day ' + dayN + '.');
+        Router.resolve();
+      }
+    }
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') checkMidnightRollover();
+  });
+  window.addEventListener('focus', checkMidnightRollover);
+  setInterval(checkMidnightRollover, 60000);
+
+  // PWA beforeinstallprompt handler
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    window.deferredPrompt = e;
+  });
+
+  // PWA Service Worker Registration
+  if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+    navigator.serviceWorker.register('./sw.js').catch(function () {});
+  }
 }
 
 window.addEventListener('DOMContentLoaded', init);

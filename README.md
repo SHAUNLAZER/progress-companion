@@ -6,68 +6,62 @@ A mobile-first, privacy-respecting client-side guided story companion for Be Bod
 
 ## Story Flow & Navigation
 
-- **Journey** (`#/`): Status path, current story node, and primary action card.
-- **Set up** (`#/start`): 9-question onboarding across 3 chapters (About you, Your routine, Your expectations).
-- **Timeline** (`#/expect`): Expectation vs reality, milestone timeline, and "Why does it take time?" explanation.
-- **Check-in** (`#/today`): Quick daily habit logging, consistency over 28 days, and streak tracker.
-- **Results** (`#/progress`): Starting point vs now, interactive SVG chart, weekly review, and honest verdict.
-- **Next step** (`#/decide`): Decision aid tailored to your verdict (Keep going, Adjust your routine, or Talk to a doctor).
+- **Journey** (`#/`): Three concentric rings (Check-in, Weekly review, Consistency), memory cards, story path, and priority card.
+- **Set up** (`#/start`): 9-tap guided onboarding across 3 chapters (About you, Your routine, Your expectations) with interactive expectation reveal and draft persistence.
+- **Timeline** (`#/expect`): Progress forecast weather strip, milestone timeline, and "Why does it take time?" explanation.
+- **Check-in** (`#/today`): 180px animated circular check-in with haptic feedback, 3-row continuity strip (Yesterday, Today, Tomorrow), 12-week heatmap, month calendar, rest days, and on-device backup/restore.
+- **Results** (`#/progress`): Starting point vs now, normal band chart with typical biology range corridor, weekly review with line-drawn SVG faces, momentum score, week recap stories, and share card.
+- **Next step** (`#/decide`): Decision aid tailored to your verdict (Keep going, Adjust your routine, or Try a different approach), refill planning, and progress summary export.
+- **Support** (`#/stuck`): Kind, 3-step re-engagement flow for when progress feels slow or routines slip.
+- **Week recap** (`#/recap`): Full-screen swipeable progress stories celebrating consistency and milestones.
+
+---
+
+## Core Features
+
+- **F1. Circular Check-in**: 180px animated ring filling in 600ms, animated tick drawing, soft pulse, guarded haptic buzz, collapsed note, and undo link.
+- **F2. Heatmap & Calendar**: GitHub-style 12-week x 7-day contribution grid and standard month calendar showing done, rest, missed, and today without red colors.
+- **F3. Normal Band Chart**: Plots user ratings against shaded biology expectation corridor per concern with clear status indications.
+- **F4. Support Flow**: Non-judgmental guided support with tailored actions, 2-week pause mode, or journey summary wrap-up.
+- **F5. Progress Forecast Strip**: Weather-style progress strip (Cloud, Sun-behind-cloud, Sun) with "You are here" marker and dynamic ETA calculation.
+- **F6. SVG Faces Rating**: Clean line-drawn SVG faces for 1–5 ratings ("Not good", "So-so", "Okay", "Good", "Great") storing numeric values.
+- **F7. Week Recap Stories**: Segmented progress stories appearing at weeks 1, 2, 4, 8, and 12.
+- **F8. Rest Days**: Up to 2 rest days per rolling 7 days that protect streaks and adjust consistency denominators fairly.
+- **F9. Memory Cards**: Recalls what you wrote weeks ago and highlights tangible baseline progress.
+- **F10. Three Concentric Rings**: Animated rings for Today's check-in, Weekly review, and 28-day consistency.
+- **F11. Expectation Reveal**: Compares expected timeframe against typical biological horizons.
+- **F12. Offline PWA**: Installable web app with service worker asset caching and on-device storage.
+- **F13. Momentum Score**: 0-100 score based on 7-day consistency, streaks, and review cadence.
+- **F14. Shareable Week Card**: One-tap copyable weekly snapshot.
 
 ---
 
 ## Deploy to Vercel
 
-The app has **no build step**, **no framework**, and **no server dependencies**. It works out of the box as a static site.
+The app has **no build step**, **no framework**, and **no server dependencies**.
 
-### Option 1: Deploy with Vercel CLI (Fastest from Terminal)
-
-1. Open PowerShell or Command Prompt.
-2. Navigate to this directory:
-   ```bash
-   cd C:\Users\shaun\.gemini\antigravity\scratch\bodywise-progress-companion
-   ```
-3. Run the Vercel deployer via `npx`:
-   ```bash
-   npx vercel
-   ```
-4. Follow the interactive prompts:
-   - `Set up and deploy?` → **Y**
-   - `Which scope?` → Select your Vercel account
-   - `Link to existing project?` → **N**
-   - `What's your project's name?` → `progress-companion` (or press Enter)
-   - `In which directory is your code located?` → `./` (press Enter)
-   - `Want to modify these settings?` → **N** (Vercel automatically detects the static site)
-5. You'll receive your live URL in seconds (e.g., `https://progress-companion.vercel.app`).
-6. To deploy straight to production later:
-   ```bash
-   npx vercel --prod
-   ```
+1. Connect your repository to Vercel or upload the directory.
+2. Framework Preset: **Other**.
+3. Build Command: leave empty.
+4. Output Directory: `.` (root).
+5. Deploy.
 
 ---
 
-### Option 2: Deploy via Vercel Web Dashboard (No CLI Required)
+## Testing
 
-1. Log in to [vercel.com](https://vercel.com).
-2. Click **Add New...** → **Project**.
-3. Import your GitHub / GitLab repository containing these files, OR:
-   - Drag and drop the `bodywise-progress-companion` folder into the deployment box.
-4. Leave Framework Preset as **Other** (Root directory: `./`).
-5. Click **Deploy**.
+Run unit tests locally using Node.js:
 
----
-
-## Running Tests Locally
-
-Run the test suite anytime with Node.js:
 ```bash
 node test.js
 ```
-All 62 test assertions across 9 test suites verify:
-- Day & week number computations across boundaries
-- 28-day consistency & consecutive streaks
-- Verdict engine decision tree & doctor safety overrides
-- Product cost and refill timelines
-- Journey card priority state routing
-- v1 to v2 data migration & default filling
-- Start date offset mapping from onboarding time buckets
-- 5-branch focus priority recommendation engine (`Utils.getFocus`)
+
+All 77+ logic tests run across 11 test suites covering consistency math, streak tracking, rest days, verdict engine, priority cards, focus resolution, casing, and critique rules.
+
+---
+
+## Privacy & Safety
+
+- **Private**: 100% on-device storage in `localStorage`.
+- **Zero tracking**: No analytics, third-party trackers, or marketing pixels.
+- **Pure problem-solving**: No prices, discounts, ratings of products, carts, or shop links.
