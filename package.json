@@ -1,0 +1,16 @@
+{
+  "name": "bodywise-progress-companion",
+  "version": "1.0.0",
+  "description": "Mobile-first progress companion for Be Bodywise wellness routines.",
+  "main": "app.js",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "keywords": [
+    "wellness",
+    "routine",
+    "tracker"
+  ],
+  "author": "",
+  "license": "ISC"
+}
