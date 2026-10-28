@@ -2683,10 +2683,253 @@ function renderSettings() {
   });
 }
 
+
+/* ==================== F4. SUPPORT FLOW (FEELING STUCK?) ==================== */
+function renderSupport() {
+  var route = '#/stuck';
+  UI.updateTabBar(route);
+  UI.renderHeader({ title: 'Support', back: '#/' });
+
+  var profile = Storage.load();
+  var c = UI.$content();
+
+  if (!profile) {
+    Router.navigate('#/welcome');
+    return;
+  }
+
+  var cfg = Utils.getConcernConfig(profile.concern);
+  var week = Utils.getWeekNumber(profile.startDate);
+
+  var reasons = (CONTENT.support && CONTENT.support.reasons) ? CONTENT.support.reasons : [
+    { id: 'slow', label: 'Results feel slow' },
+    { id: 'cant_tell', label: 'Can not tell if it is working' },
+    { id: 'forgetting', label: 'I keep forgetting' },
+    { id: 'not_feeling_good', label: 'I am not feeling good about it' },
+    { id: 'side_effects', label: 'Side effects' },
+    { id: 'other', label: 'Something else' }
+  ];
+
+  var html = '<h1 style="font-size:1.25rem;font-weight:800;color:var(--deep-navy);margin-bottom:4px;">Feeling stuck?</h1>';
+  html += '<p class="status-line">Progress takes practice. We can help you adjust.</p>';
+
+  // Step 1: What is making it hard?
+  html += '<div class="card mb-16">';
+  html += '<h2 class="card-title" style="font-size:1rem;">What is making it hard?</h2>';
+  html += '<p class="muted mb-12">Pick what fits best right now.</p>';
+  html += '<div class="chip-group" id="stuck-reasons">';
+  reasons.forEach(function (r) {
+    html += '<button type="button" class="chip" data-id="' + r.id + '">' + escHTML(r.label) + '</button>';
+  });
+  html += '</div></div>';
+
+  // Step 2: Tailored response area
+  html += '<div id="tailored-card" style="display:none;" class="card mb-16">';
+  html += '<h2 class="card-title" id="tailored-title" style="font-size:1rem;"></h2>';
+  html += '<p class="card-text mb-14" id="tailored-body" style="line-height:1.4;"></p>';
+  html += '<div id="tailored-action-wrap"></div>';
+  html += '</div>';
+
+  // Step 3: Three clear choices
+  html += '<div class="card">';
+  html += '<h2 class="card-title" style="font-size:1rem;">Choose your next step</h2>';
+  html += '<p class="muted mb-14">No pressure, no guilt. You decide what works.</p>';
+  html += '<div style="display:flex;flex-direction:column;gap:10px;">';
+  html += '<button type="button" class="btn btn-primary btn-full" id="btn-stuck-keep">Keep going</button>';
+  html += '<button type="button" class="btn btn-secondary btn-full" id="btn-stuck-pause">Pause for now (2 weeks)</button>';
+  html += '<button type="button" class="btn btn-text-link" id="btn-stuck-done" style="text-align:center;margin-top:4px;">I am done</button>';
+  html += '</div></div>';
+
+  c.innerHTML = html;
+
+  var tailoredData = (CONTENT.support && CONTENT.support.tailored) ? CONTENT.support.tailored : {};
+
+  // Bind reason chips
+  c.querySelectorAll('#stuck-reasons .chip').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      c.querySelectorAll('#stuck-reasons .chip').forEach(function (b) { b.classList.remove('selected'); });
+      this.classList.add('selected');
+
+      var id = this.getAttribute('data-id');
+      var item = tailoredData[id] || {
+        title: 'Adjust your pace',
+        body: 'Take a pause, review your notes, or continue when you feel ready.',
+        action: 'Keep going',
+        route: '#/home'
+      };
+
+      var tCard = document.getElementById('tailored-card');
+      var tTitle = document.getElementById('tailored-title');
+      var tBody = document.getElementById('tailored-body');
+      var tActionWrap = document.getElementById('tailored-action-wrap');
+
+      tTitle.textContent = item.title;
+      tBody.textContent = item.body.replace('{week}', cfg.earlyWindowWeeks);
+
+      if (item.isReminder) {
+        tActionWrap.innerHTML = '<button type="button" class="btn btn-primary" id="btn-tailored-reminder">Remind me daily</button>';
+        document.getElementById('btn-tailored-reminder').addEventListener('click', function () {
+          downloadReminderICS(profile);
+        });
+      } else if (item.isPause) {
+        tActionWrap.innerHTML = '<button type="button" class="btn btn-secondary" id="btn-tailored-pause">Pause routine</button>';
+        document.getElementById('btn-tailored-pause').addEventListener('click', function () {
+          profile.paused = { from: Utils.getToday(), until: Utils.addDays(Utils.getToday(), 14) };
+          Storage.save(profile);
+          UI.toast('Routine paused for 2 weeks');
+          Router.navigate('#/home');
+        });
+      } else {
+        tActionWrap.innerHTML = '<a href="' + (item.route || '#/home') + '" class="btn btn-primary">' + escHTML(item.action) + '</a>';
+      }
+
+      tCard.style.display = 'block';
+      tCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  });
+
+  document.getElementById('btn-stuck-keep').addEventListener('click', function () {
+    Router.navigate('#/home');
+  });
+
+  document.getElementById('btn-stuck-pause').addEventListener('click', function () {
+    profile.paused = { from: Utils.getToday(), until: Utils.addDays(Utils.getToday(), 14) };
+    Storage.save(profile);
+    UI.toast('Routine paused for 2 weeks');
+    Router.navigate('#/home');
+  });
+
+  document.getElementById('btn-stuck-done').addEventListener('click', function () {
+    Router.navigate('#/decide');
+  });
+}
+
+/* ==================== F7. WEEK RECAP STORIES ==================== */
+function renderRecap() {
+  var profile = Storage.load();
+  if (!profile) {
+    Router.navigate('#/welcome');
+    return;
+  }
+  var c = UI.$content();
+  var cfg = Utils.getConcernConfig(profile.concern);
+  var week = Utils.getWeekNumber(profile.startDate);
+  var con = Utils.getConsistency(profile.checkins, profile.startDate);
+  var streak = Utils.getStreak(profile.checkins);
+
+  var baseRating = (profile.ratings && profile.ratings[0]) ? profile.ratings[0].primary : 3;
+  var curRating = (profile.ratings && profile.ratings.length > 0) ? profile.ratings[profile.ratings.length - 1].primary : baseRating;
+
+  if (!profile.recapSeen) profile.recapSeen = [];
+  if (profile.recapSeen.indexOf(week) === -1) {
+    profile.recapSeen.push(week);
+    Storage.save(profile);
+  }
+
+  var currentSlide = 0;
+  var slides = [
+    {
+      theme: 'navy',
+      stat: (profile.checkins || []).filter(function (ci) { return ci.done; }).length,
+      title: 'Week ' + week + ' completed',
+      body: 'Every check-in is a step forward in your routine.'
+    },
+    {
+      theme: 'navy',
+      stat: Math.round(con.pct * 100) + '%',
+      title: '28-Day Consistency',
+      body: 'Best streak so far: ' + streak + ' days steady.'
+    },
+    {
+      theme: 'cream',
+      stat: baseRating + ' → ' + curRating,
+      title: 'Your watched marker',
+      body: escHTML(profile.marker || 'Watched marker') + ' trend out of 5.'
+    },
+    {
+      theme: 'navy',
+      stat: 'W' + week,
+      title: 'Typical biology timeline',
+      body: 'Many people notice subtle internal shifts before visible changes emerge.'
+    },
+    {
+      theme: 'cream',
+      stat: '',
+      title: 'Why you started',
+      body: profile.whyStarted ? ('“' + escHTML(profile.whyStarted) + '”') : 'Taking time for yourself every single day.'
+    },
+    {
+      theme: 'navy',
+      stat: 'Next',
+      title: 'Looking ahead',
+      body: 'Next milestone: ' + ((cfg.milestones && cfg.milestones[0]) ? cfg.milestones[0].title : 'Building foundation') + '.'
+    }
+  ];
+
+  function drawSlide(idx) {
+    var s = slides[idx];
+    var html = '<div class="recap-modal-backdrop">';
+    html += '<div class="recap-card ' + (s.theme === 'cream' ? 'theme-cream' : '') + '">';
+    html += '<button type="button" class="recap-close-btn" id="recap-close" aria-label="Close recap">&times;</button>';
+    
+    html += '<div class="recap-progress-bars">';
+    for (var i = 0; i < slides.length; i++) {
+      html += '<div class="recap-segment' + (i <= idx ? ' active' : '') + '"></div>';
+    }
+    html += '</div>';
+
+    html += '<div class="recap-content">';
+    if (s.stat) html += '<div class="recap-big-stat">' + s.stat + '</div>';
+    html += '<h2 class="recap-title">' + s.title + '</h2>';
+    html += '<p class="recap-body">' + s.body + '</p>';
+    html += '</div>';
+
+    html += '<div class="recap-nav-btn-row">';
+    if (idx > 0) {
+      html += '<button type="button" class="btn btn-sm btn-secondary" id="recap-prev">Back</button>';
+    } else {
+      html += '<div></div>';
+    }
+    if (idx < slides.length - 1) {
+      html += '<button type="button" class="btn btn-sm btn-primary" id="recap-next">Next</button>';
+    } else {
+      html += '<button type="button" class="btn btn-sm btn-primary" id="recap-finish">Done</button>';
+    }
+    html += '</div>';
+
+    html += '</div></div>';
+    c.innerHTML = html;
+
+    document.getElementById('recap-close').addEventListener('click', function () {
+      Router.navigate('#/home');
+    });
+    var prev = document.getElementById('recap-prev');
+    if (prev) prev.addEventListener('click', function () { drawSlide(idx - 1); });
+    var next = document.getElementById('recap-next');
+    if (next) next.addEventListener('click', function () { drawSlide(idx + 1); });
+    var finish = document.getElementById('recap-finish');
+    if (finish) finish.addEventListener('click', function () { Router.navigate('#/home'); });
+  }
+
+  drawSlide(currentSlide);
+}
+
 /* ==================== INIT ==================== */
 function init() {
-  Router.init();
-  UI.initHeader();
+  Router.register('#/', renderHome);
+  Router.register('#/welcome', renderWelcome);
+  Router.register('#/welcome-intro', renderWelcomeIntro);
+  Router.register('#/start', renderStart);
+  Router.register('#/expect', renderExpect);
+  Router.register('#/today', renderToday);
+  Router.register('#/progress', renderProgress);
+  Router.register('#/decide', renderDecide);
+  Router.register('#/about', renderAbout);
+  Router.register('#/settings', renderSettings);
+  Router.register('#/stuck', renderSupport);
+  Router.register('#/recap', renderRecap);
+
+  Router.start();
 
   // Midnight rollover listener
   var currentRenderedDate = Utils.getToday();
@@ -2715,7 +2958,7 @@ function init() {
   });
 
   // PWA Service Worker Registration
-  if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+  if ('serviceWorker' in navigator && location.protocol && location.protocol.indexOf('http') === 0) {
     navigator.serviceWorker.register('./sw.js').catch(function () {});
   }
 }
