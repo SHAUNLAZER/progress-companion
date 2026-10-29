@@ -13,9 +13,10 @@ const CONTENT = {
 
   /* ---- Landing flow (L1 & L2) ---- */
   landing: {
+    eyebrow: "BE BODYWISE",
     wordmark: "Progress Companion",
-    headline: "See your progress, even when it's slow",
-    subline: "A daily companion. Set a goal, check in, and watch real change.",
+    headline: "Your Personal Progress Companion",
+    subline: "See real change, even when it's slow.",
     howItWorks: [
       { step: "1", title: "Set a goal", time: "About 1 minute." },
       { step: "2", title: "Check in daily", time: "10 seconds." },
@@ -895,11 +896,13 @@ const CONTENT = {
   /* ---- The Living Guide Persona (Section 2) ---- */
   guide: {
     avatarTitle: "Your Bodywise Guide",
+    routineReady: "Your routine is ready.\nI will be right beside you.",
+    tapDoubts: "Tap me anytime you have doubts.",
     setupSpeech: {
-      step1: "Hi. What should I call you as we begin?",
-      step2: "What area of your wellness are we caring for?",
-      step3: "Let's see what is in your cabinet.\nCheck off the formulas you own.",
-      step4: "Do you prefer a morning ritual, evening, or both?"
+      step1: "Hi there.\nWhat should I call you as we begin?",
+      step2: "Which area of your wellness are we caring for today?",
+      step3: "Let's look in your cabinet.\nCheck off the Bodywise formulas you own.",
+      step4: "Do you prefer dedicating time in the morning, evening, or both?"
     },
     greetings: {
       morning: "Good morning, {name}.\nDay {streak} of care together.\nConsistency is quiet work.",
@@ -910,38 +913,38 @@ const CONTENT = {
 
   /* ---- Offline Reassurance Chatbot (Section 3) ---- */
   chatbot: {
-    title: "Ask the Guide",
+    title: "The Bodywise Companion",
     floatingBtn: "Ask the Guide",
-    welcome: "I am here whenever you feel uncertain.\nWhat is on your mind today?",
+    welcome: "Wellness takes time, and doubts are completely normal.\nWhat are you wondering about today?",
     topics: [
       {
         id: "normal",
-        question: "Is this normal?",
-        chip: "Is this normal?",
+        question: "Is my skin purging or reacting?",
+        chip: "Purging vs. reaction",
         answer: "Active formulas speed up renewal in weeks 1 to 3.\nThis can cause temporary shedding or minor purging.\nIf you feel itching or burning, pause the product."
       },
       {
         id: "slow",
-        question: "Results feel slow",
+        question: "It's been 3 weeks and I look the same",
         chip: "Results feel slow",
-        answer: "Skin cells renew every 28 days.\nHair follicles take 60 to 90 days.\nInternal cellular change happens before surface signs appear."
+        answer: "Skin cells renew every 28 days.\nHair follicles take 60 to 90 days.\nCheck tangible micro-markers rather than the mirror."
       },
       {
         id: "missed",
-        question: "I missed a few days",
-        chip: "I missed a few days",
+        question: "I missed 3 days in a row",
+        chip: "Missed routine",
         answer: "Pauses are part of being human.\nNever double your dose tomorrow.\nYour past consistency is not erased by a break."
       },
       {
         id: "tired",
-        question: "I am too tired tonight",
-        chip: "I am too tired tonight",
+        question: "I'm too exhausted for my routine tonight",
+        chip: "Exhausted tonight",
         answer: "Deep sleep is when your cells rebuild.\nSplash your face with water and sleep.\nRest is an essential part of care."
       },
       {
         id: "lift",
-        question: "Need a quick lift",
-        chip: "Need a quick lift",
+        question: "Need a mental lift",
+        chip: "Mental lift",
         answer: "Your routine is care for yourself, not a test.\nTake one slow breath.\nYou are doing well simply by caring today."
       }
     ],

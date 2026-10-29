@@ -2114,9 +2114,20 @@ function renderHeroSection(container) {
     '<div class="hero-split">' +
       // Left Column
       '<div class="hero-left">' +
-        '<span class="hero-wordmark">' + escHTML(CONTENT.brand || 'Be Bodywise') + '</span>' +
-        '<h1 class="hero-headline">' + escHTML(c.headline) + '</h1>' +
-        '<p class="hero-subline">' + escHTML(c.subline) + '</p>' +
+        '<div class="hero-character-reveal">' +
+          '<div class="hero-character-glow"></div>' +
+          '<div class="hero-character-emblem">' +
+            '<svg class="hero-emblem-svg" viewBox="0 0 447 447" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+              '<circle cx="235" cy="102" r="15"/>' +
+              '<path class="hero-draw-stroke" d="M 333 64 L 344 66 L 344 68 L 335 89 L 325 103 L 305 123 L 283 139 L 279 141 L 274 132 L 299 113 L 316 96 L 326 82 L 333 65"/>' +
+              '<path class="hero-draw-stroke" d="M 284 240 C 275 280, 255 340, 232 381"/>' +
+              '<path class="hero-draw-stroke" d="M 110 104 L 112 104 L 121 116 L 132 124 L 154 133 L 181 137 L 242 136 L 256 139 L 262 142 L 267 148 L 267 159 L 260 166 L 218 180 L 212 186 L 214 188 L 264 187 L 276 190 L 283 196 L 285 201 L 285 210 L 283 214 L 275 221 L 260 227 L 212 236 L 188 243 L 179 248 L 171 256 L 166 267 L 165 326 L 166 353 L 168 354 L 201 298 L 218 266 L 220 259 L 232 260 L 233 359 L 249 332 L 264 298 L 274 265 L 278 240 L 279 238 L 290 240 L 282 280 L 267 321 L 249 356 L 231 383 L 220 379 L 219 288 L 168 377 L 157 375 L 154 331 L 154 273 L 156 261 L 160 252 L 165 245 L 177 236 L 201 227 L 254 217 L 268 212 L 274 207 L 274 203 L 272 201 L 262 198 L 212 199 L 207 197 L 201 189 L 201 181 L 206 174 L 213 170 L 250 158 L 254 156 L 256 152 L 251 149 L 240 147 L 178 148 L 152 144 L 137 139 L 114 125 L 102 110 L 109 105 Z"/>' +
+            '</svg>' +
+          '</div>' +
+        '</div>' +
+        '<div class="hero-brand-eyebrow">' + escHTML(c.eyebrow || 'BE BODYWISE') + '</div>' +
+        '<h1 class="hero-headline">' + escHTML(c.headline || 'Your Personal Progress Companion') + '</h1>' +
+        '<p class="hero-subline">' + escHTML(c.subline || 'See real change, even when it is slow.') + '</p>' +
         '<div class="hero-benefits">' +
           '<div class="benefit-row">' +
             '<span class="benefit-icon">' + ICONS.check + '</span>' +
@@ -2650,14 +2661,43 @@ function renderBathroomShelfSetup(container) {
       Storage.save(profile);
       clearDraft();
       startState.editing = false;
-      
-      // Complete all section DOM updates, then smoothly transition to #today with entry animation
-      renderAllSections();
+
+      // Completion badge with animated character
+      var cardEl = container.querySelector('.card');
+      if (cardEl) {
+        var badge = document.createElement('div');
+        badge.className = 'guide-completion-badge';
+        var badgeText = (CONTENT.guide && CONTENT.guide.routineReady) ? CONTENT.guide.routineReady.replace(/\n/g, ' ') : 'Your routine is ready.';
+        badge.innerHTML = '<div class="guide-avatar-circle" style="width:36px;height:36px;background:#fff;">' + ICONS.guideAvatar + '</div>' +
+          '<span>' + escHTML(badgeText) + '</span>';
+        cardEl.insertBefore(badge, cardEl.firstChild);
+      }
+
+      // Complete all section DOM updates, smoothly transition to #today
       setTimeout(function () {
+        renderAllSections();
         scrollToSection('today');
+
+        var floatBtn = document.getElementById('guide-floating-btn');
+        if (floatBtn) {
+          floatBtn.classList.add('guide-docked-badge');
+          var existingChip = floatBtn.querySelector('.guide-floating-speech-chip');
+          if (existingChip) existingChip.remove();
+          var chip = document.createElement('span');
+          chip.className = 'guide-floating-speech-chip';
+          chip.textContent = (CONTENT.guide && CONTENT.guide.tapDoubts) || 'Tap me anytime you have doubts.';
+          floatBtn.appendChild(chip);
+          setTimeout(function () {
+            if (chip && chip.parentNode) chip.remove();
+          }, 5000);
+        }
+
         var todaySec = document.getElementById('today');
-        if (todaySec) todaySec.classList.add('fade-in-entry');
-      }, 60);
+        if (todaySec) {
+          todaySec.classList.add('fade-in-entry');
+          setTimeout(function () { todaySec.classList.remove('fade-in-entry'); }, 1200);
+        }
+      }, 350);
       UI.toast('Bathroom shelf ready. Daily ritual generated.');
     });
   }
@@ -3587,14 +3627,16 @@ function renderAllSections() {
     structureHtml += '<footer id="site-footer" class="site-footer"></footer>';
     structureHtml += '</div>';
 
-    structureHtml += '<div id="drawer-backdrop" class="drawer-backdrop" aria-hidden="true"></div>' +
+    structureHtml += '<div id="app-drawer" class="drawer-overlay" aria-hidden="true">' +
+      '<div id="drawer-backdrop" class="drawer-backdrop"></div>' +
       '<div id="drawer-panel" class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title">' +
         '<div class="drawer-header">' +
           '<h2 class="drawer-title" id="drawer-title"></h2>' +
           '<button type="button" class="drawer-close" id="drawer-close" aria-label="Close dialog">&times;</button>' +
         '</div>' +
         '<div class="drawer-body" id="drawer-body"></div>' +
-      '</div>';
+      '</div>' +
+    '</div>';
 
     structureHtml += '<div id="toast" class="toast" role="status" aria-live="polite"></div>';
 

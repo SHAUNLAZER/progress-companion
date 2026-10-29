@@ -3,7 +3,7 @@
    Caches static assets for reliable offline daily tracking.
    ============================================================ */
 
-const CACHE_NAME = 'progress-companion-v4';
+const CACHE_NAME = 'progress-companion-v5';
 const ASSETS = [
   './',
   './index.html',
@@ -47,20 +47,19 @@ self.addEventListener('fetch', function (event) {
     return;
   }
 
+  // Network-first: fetch freshest from server when online, fall back to cache when offline
   event.respondWith(
-    caches.match(event.request).then(function (cached) {
-      if (cached) return cached;
-      return fetch(event.request).then(function (response) {
-        if (!response || response.status !== 200 || response.type !== 'basic') {
-          return response;
-        }
-        var responseToCache = response.clone();
+    fetch(event.request).then(function (response) {
+      if (response && response.status === 200 && response.type === 'basic') {
+        var copy = response.clone();
         caches.open(CACHE_NAME).then(function (cache) {
-          cache.put(event.request, responseToCache);
+          cache.put(event.request, copy);
         });
-        return response;
-      }).catch(function () {
-        // Fallback to offline cached index
+      }
+      return response;
+    }).catch(function () {
+      return caches.match(event.request).then(function (cached) {
+        if (cached) return cached;
         if (event.request.mode === 'navigate') {
           return caches.match('./index.html');
         }
