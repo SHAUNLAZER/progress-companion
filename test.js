@@ -484,7 +484,7 @@
   // 11. Phase 1 Landing Order & First Visit (Section 2)
   console.log('\nSuite 11: Landing Order & First Visit (Section 2)');
   assert(Array.isArray(SECTIONS) && SECTIONS.length >= 7, 'SECTIONS registry is an array with all sections');
-  assert(SECTIONS[0].id === 'companion', 'First registered section is companion (landing hero)');
+  assert(SECTIONS[0].id === 'companion', 'First registered section is companion (overview)');
   assert(typeof renderHeroSection === 'function', 'renderHeroSection is defined');
   assert(typeof renderHowSection === 'function', 'renderHowSection is defined');
   assert(typeof renderSetupSection === 'function', 'renderSetupSection is defined');
@@ -588,8 +588,59 @@
   assert(lowBr.remainingDoses === 3, 'Remaining doses is 3');
   assert(lowBr.isLow === true, 'isLow is true when doses <= 5');
 
-  // 19. Prohibited Terms & Copy Integrity Audit (All files)
-  console.log('\nSuite 19: Prohibited Terms & Copy Integrity Audit');
+  // 19. Master Refactor: Header Navigation Hierarchy & No Duplicate Companion
+  console.log('\nSuite 19: Header Navigation Hierarchy & No Duplicate Companion');
+  var headerHtmlMock = '';
+  root.document.getElementById = function (id) {
+    if (id === 'app-header') {
+      return {
+        innerHTML: '',
+        querySelectorAll: function () { return []; }
+      };
+    }
+    return null;
+  };
+  assert(appCode.indexOf('class="header-brand"') >= 0, 'Header uses header-brand class with Be Bodywise logo');
+  assert(appCode.indexOf('header-nav-link') >= 0, 'Header defines distinct header-nav-link navigation items');
+  assert(SECTIONS.some(function (s) { return s.id === 'mind'; }), 'SECTIONS registry includes Mind Space (#mind)');
+  assert(SECTIONS.some(function (s) { return s.navLabel === 'Daily Ritual'; }), 'SECTIONS registry includes "Daily Ritual" navigation label');
+  assert(SECTIONS.some(function (s) { return s.navLabel === 'Overview'; }), 'SECTIONS registry includes "Overview" navigation label');
+
+  // 20. Master Refactor: Timeline Duration & Zero undefinedw
+  console.log('\nSuite 20: Timeline Duration & Zero undefinedw');
+  assert(appCode.indexOf("ms.week + 'w'") === -1, 'Zero occurrences of ms.week + "w" in app.js (undefinedw bug resolved)');
+  assert(appCode.indexOf('ms.fromWeek') >= 0 && appCode.indexOf('ms.toWeek') >= 0, 'Timeline reads ms.fromWeek and ms.toWeek');
+
+  // 21. Master Refactor: The Living Guide Persona & Speech Bubbles
+  console.log('\nSuite 21: The Living Guide Persona & Speech Bubbles');
+  assert(CONTENT.guide && CONTENT.guide.setupSpeech, 'CONTENT defines Guide setup speech');
+  assert(typeof CONTENT.guide.setupSpeech.step1 === 'string', 'Guide has Step 1 speech');
+  assert(typeof CONTENT.guide.setupSpeech.step2 === 'string', 'Guide has Step 2 speech');
+  assert(typeof CONTENT.guide.setupSpeech.step3 === 'string', 'Guide has Step 3 speech');
+  assert(typeof CONTENT.guide.setupSpeech.step4 === 'string', 'Guide has Step 4 speech');
+  assert(CONTENT.guide.greetings && typeof CONTENT.guide.greetings.morning === 'string', 'Guide has time-of-day morning greeting');
+
+  // 22. Master Refactor: Offline Reassurance Chatbot
+  console.log('\nSuite 22: Offline Reassurance Chatbot');
+  assert(CONTENT.chatbot && Array.isArray(CONTENT.chatbot.topics), 'CONTENT defines Chatbot with topics');
+  assert(CONTENT.chatbot.topics.length >= 5, 'At least 5 reassurance decision tree topics provided');
+  assert(CONTENT.chatbot.topics.some(function (t) { return t.id === 'normal'; }), 'Chatbot includes "Is this normal?" topic');
+  assert(CONTENT.chatbot.topics.some(function (t) { return t.id === 'slow'; }), 'Chatbot includes "Results feel slow" topic');
+  assert(CONTENT.chatbot.topics.some(function (t) { return t.id === 'missed'; }), 'Chatbot includes "I missed a few days" topic');
+  assert(CONTENT.chatbot.topics.some(function (t) { return t.id === 'tired'; }), 'Chatbot includes "I am too tired tonight" topic');
+  assert(CONTENT.chatbot.topics.some(function (t) { return t.id === 'lift'; }), 'Chatbot includes "Need a quick lift" topic');
+  assert(typeof openChatbotDrawer === 'function', 'openChatbotDrawer function is defined');
+
+  // 23. Master Refactor: Dedicated Mind Space Section
+  console.log('\nSuite 23: Dedicated Mind Space Section');
+  assert(CONTENT.mindSpace && CONTENT.mindSpace.breathing, 'CONTENT defines Mind Space breathing pacer');
+  assert(CONTENT.mindSpace.breathing.cycleSeconds === 12, 'Breathing pacer cycle duration is 12 seconds (4s Inhale, 4s Hold, 4s Exhale)');
+  assert(Array.isArray(CONTENT.mindSpace.affirmations) && CONTENT.mindSpace.affirmations.length >= 7, 'At least 7 daily grounding affirmations provided');
+  assert(CONTENT.mindSpace.weather && Array.isArray(CONTENT.mindSpace.weather.moods) && CONTENT.mindSpace.weather.moods.length === 5, '5 emotional weather moods provided');
+  assert(typeof renderMindSection === 'function', 'renderMindSection function is defined');
+
+  // 24. Prohibited Terms & Copy Integrity Audit (All files)
+  console.log('\nSuite 24: Prohibited Terms & Copy Integrity Audit');
   var forbiddenDoc = ['d','o','c','t','o','r'].join('');
   var forbiddenDm = ['d','e','m','o'].join('');
   var projectFiles = ['index.html', 'style.css', 'content.js', 'app.js', 'README.md', 'vercel.json'];

@@ -239,6 +239,16 @@ var Utils = {
     return CONTENT.mindsetQuotes[idx];
   },
 
+  getDailyAffirmation: function (dateStr) {
+    var affs = (CONTENT.mindSpace && CONTENT.mindSpace.affirmations) || [
+      "Progress is happening in quiet cellular cycles."
+    ];
+    var d = this.parseDate(dateStr || this.getToday());
+    var dayNum = Math.abs(d.getFullYear() * 365 + d.getMonth() * 31 + d.getDate());
+    var idx = dayNum % affs.length;
+    return affs[idx];
+  },
+
   getBurnRate: function (product, checkins, startDate) {
     if (!product) return null;
     var sizeDays = product.sizeDays || 30;
@@ -1909,13 +1919,26 @@ function renderRecap() {
 
 
 
-/* ==================== SECTION REGISTRY (SECTION 3) ==================== */
+/* ==================== SVG ICONS & AVATARS ==================== */
+var ICONS = {
+  guideAvatar: '<svg class="guide-avatar-svg" width="22" height="22" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">' +
+    '<circle cx="24" cy="12" r="5"/>' +
+    '<path d="M 12 25 C 16 18, 22 21, 24 27 C 26 21, 32 18, 36 25"/>' +
+    '<path d="M 24 27 C 23 34, 25 39, 24 44"/>' +
+    '<path d="M 18 35 C 22 38, 26 38, 30 35"/>' +
+    '</svg>',
+  check: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+  menu: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>'
+};
+
+/* ==================== SECTION REGISTRY ==================== */
 var SECTIONS = [
-  { id: 'companion', navLabel: 'Companion', title: 'Progress Companion', render: renderHeroSection },
-  { id: 'how', navLabel: 'How it works', title: 'How it works', render: renderHowSection },
+  { id: 'companion', navLabel: 'Overview', title: 'Be Bodywise', render: renderHeroSection },
+  { id: 'how', navLabel: '', title: 'How it works', render: renderHowSection },
   { id: 'setup', navLabel: 'Setup', title: 'Your plan', render: renderSetupSection },
+  { id: 'today', navLabel: 'Daily Ritual', title: 'Daily ritual', render: renderCheckinSection, dashboard: true },
   { id: 'timeline', navLabel: 'Timeline', title: 'Your timeline', render: renderTimelineSection, dashboard: true },
-  { id: 'today', navLabel: 'Check-in', title: 'Daily check-in', render: renderCheckinSection, dashboard: true },
+  { id: 'mind', navLabel: 'Mind Space', title: 'Mind Space', render: renderMindSection, dashboard: true },
   { id: 'results', navLabel: 'Results', title: 'Your results', render: renderResultsSection, dashboard: true },
   { id: 'decide', navLabel: 'Next step', title: 'What next?', render: renderNextStepSection, dashboard: true },
   { id: 'closing', navLabel: '', title: '', render: renderClosingSection }
@@ -1925,10 +1948,10 @@ if (typeof window !== 'undefined') window.SECTIONS = SECTIONS;
 /* ==================== JOURNEY CARD PRIORITY ==================== */
 function getPrimaryCard(profile) {
   if (!profile) {
-    return '<div class="card"><h3 class="card-title">Know if it\'s working</h3><p class="card-text">Set up your routine.</p><a href="#/start" class="btn btn-primary">Set up my plan</a></div>';
+    return '<div class="card"><h3 class="card-title">Know if it\'s working</h3><p class="card-text">Set up your routine.</p><a href="#/start" data-scroll="setup" class="btn btn-primary">Set up my plan</a></div>';
   }
   if (Utils.isWeeklyRatingDue(profile)) {
-    return '<div class="card"><h3 class="card-title">Weekly review</h3><p class="card-text">30 seconds. See how you\'re doing.</p><a href="#/progress" class="btn btn-primary">Start review</a></div>';
+    return '<div class="card"><h3 class="card-title">Weekly review</h3><p class="card-text">30 seconds. See how you\'re doing.</p><a href="#/progress" data-scroll="results" class="btn btn-primary">Start review</a></div>';
   }
   var refillNeeded = false;
   (profile.products || []).forEach(function (p) {
@@ -1936,16 +1959,124 @@ function getPrimaryCard(profile) {
     if (dl !== null && dl <= 10) refillNeeded = true;
   });
   if (refillNeeded) {
-    return '<div class="card"><h3 class="card-title">Refill soon</h3><p class="card-text">Plan your next pack.</p><a href="#/decide" class="btn btn-primary">Plan refill</a></div>';
+    return '<div class="card"><h3 class="card-title">Refill soon</h3><p class="card-text">Plan your next pack.</p><a href="#/decide" data-scroll="decide" class="btn btn-primary">Plan refill</a></div>';
   }
   if (!Utils.isCheckedInToday(profile)) {
-    return '<div class="card"><h3 class="card-title">Check in today</h3><p class="card-text">Ten seconds to log today.</p><a href="#/today" class="btn btn-primary">Mark done</a></div>';
+    return '<div class="card"><h3 class="card-title">Check in today</h3><p class="card-text">Check off today\'s morning or night steps.</p><a href="#/today" data-scroll="today" class="btn btn-primary">Mark done</a></div>';
   }
-  if (!profile.flags || !profile.flags.seenExpect) {
-    return '<div class="card"><h3 class="card-title">See your timeline</h3><p class="card-text">Understand biology timelines.</p><a href="#/expect" class="btn btn-primary">View timeline</a></div>';
+  if (profile.flags && !profile.flags.seenExpect) {
+    return '<div class="card"><h3 class="card-title">See your timeline</h3><p class="card-text">Know what to expect each week.</p><a href="#/expect" data-scroll="timeline" class="btn btn-primary">View timeline</a></div>';
   }
-  return '<div class="card"><h3 class="card-title">All done today</h3><p class="card-text">Your routine is on track.</p><a href="#/progress" class="btn btn-primary">See results</a></div>';
+  return '<div class="card"><h3 class="card-title">All done today</h3><p class="card-text">Your routine is on track.</p><a href="#/progress" data-scroll="results" class="btn btn-primary">See results</a></div>';
 }
+
+/* ==================== HEADER & SHELL ==================== */
+UI.renderHeader = function () {
+  var profile = Storage.load();
+  var h = this.$header();
+  if (!h) return;
+
+  var ctaLabel = profile ? 'Daily Ritual' : 'Get started';
+  var ctaTarget = profile ? 'today' : 'setup';
+
+  var html = '<div class="header-inner">' +
+    // Brand Logo with Fluid Line-Art Guide Avatar (Zero duplicate word "Companion")
+    '<a href="#companion" class="header-brand" data-scroll="companion">' +
+      '<span class="guide-avatar-badge">' + ICONS.guideAvatar + '</span>' +
+      '<span class="brand-name">' + escHTML(CONTENT.brand || 'Be Bodywise') + '</span>' +
+    '</a>' +
+
+    // Clearly distinct navigation links
+    '<nav class="header-nav" aria-label="Main section navigation">' +
+      '<a href="#companion" class="header-nav-link active" data-scroll="companion">Overview</a>' +
+      '<a href="#today" class="header-nav-link" data-scroll="today">Daily Ritual</a>' +
+      '<a href="#timeline" class="header-nav-link" data-scroll="timeline">Timeline</a>' +
+      '<a href="#mind" class="header-nav-link" data-scroll="mind">Mind Space</a>' +
+      '<a href="#results" class="header-nav-link" data-scroll="results">Results</a>' +
+    '</nav>' +
+
+    // Header Actions
+    '<div class="header-actions">' +
+      '<button type="button" class="btn btn-primary btn-sm" id="header-cta-btn" data-scroll="' + ctaTarget + '">' + ctaLabel + '</button>' +
+      '<button type="button" class="header-menu-btn" id="header-menu-btn" aria-label="Menu and settings">' +
+        ICONS.menu +
+        '<span>Menu</span>' +
+      '</button>' +
+    '</div>' +
+  '</div>';
+
+  h.innerHTML = html;
+
+  // Bind scroll links
+  h.querySelectorAll('[data-scroll]').forEach(function (el) {
+    el.addEventListener('click', function (e) {
+      e.preventDefault();
+      var target = el.getAttribute('data-scroll');
+      scrollToSection(target);
+    });
+  });
+
+  // Bind menu drawer
+  var menuBtn = document.getElementById('header-menu-btn');
+  if (menuBtn) {
+    menuBtn.addEventListener('click', function () {
+      openSettingsDrawer();
+    });
+  }
+};
+
+/* ==================== SECTION SCROLLING & SCROLLSPY ==================== */
+function scrollToSection(id) {
+  var el = document.getElementById(id);
+  if (el) {
+    var headerOffset = 70;
+    var elementPosition = el.getBoundingClientRect().top;
+    var offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+    window.scrollTo({
+      top: offsetPosition,
+      behavior: 'smooth'
+    });
+    try {
+      history.replaceState(null, '', '#' + id);
+    } catch (e) {}
+  }
+}
+
+function initScrollspy() {
+  var navLinks = document.querySelectorAll('.header-nav-link, #tab-bar a');
+  var sectionElements = [];
+  SECTIONS.forEach(function (sec) {
+    var el = document.getElementById(sec.id);
+    if (el) sectionElements.push(el);
+  });
+
+  if (!window.IntersectionObserver) return;
+
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) {
+        var id = entry.target.id;
+        navLinks.forEach(function (link) {
+          var target = link.getAttribute('data-scroll');
+          if (target === id || (id === 'how' && target === 'companion')) {
+            link.classList.add('active');
+          } else {
+            link.classList.remove('active');
+          }
+        });
+        try {
+          history.replaceState(null, '', '#' + id);
+        } catch (e) {}
+      }
+    });
+  }, { threshold: 0.25, rootMargin: '-60px 0px -40% 0px' });
+
+  sectionElements.forEach(function (sec) {
+    observer.observe(sec);
+  });
+}
+
+
 
 /* ==================== SECTION BUILDERS & RENDERERS ==================== */
 
@@ -1962,13 +2093,13 @@ function renderForecastStripHTML(cfg, profile) {
     html += '<div class="forecast-week">W' + w + '</div>';
     if (isEarly) {
       html += '<svg class="forecast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>';
-      html += '<div class="forecast-phase">Base</div>';
+      html += '<div class="forecast-label">Adjusting</div>';
     } else if (isMiddle) {
-      html += '<svg class="forecast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M20 12h2"/><path d="M17.5 19H9a5 5 0 0 1-2-9.6A6 6 0 0 1 17 8a4 4 0 0 1 2 7.5"/></svg>';
-      html += '<div class="forecast-phase">Early</div>';
+      html += '<svg class="forecast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/></svg>';
+      html += '<div class="forecast-label">Early signs</div>';
     } else {
-      html += '<svg class="forecast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>';
-      html += '<div class="forecast-phase">Clear</div>';
+      html += '<svg class="forecast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>';
+      html += '<div class="forecast-label">Steadier</div>';
     }
     html += '</div>';
   }
@@ -1976,85 +2107,90 @@ function renderForecastStripHTML(cfg, profile) {
   return html;
 }
 
-/* ---- Section 1: Landing Hero (Section 5.1) ---- */
+/* ---- Section 1: Hero Section (Section 5.1) ---- */
 function renderHeroSection(container) {
   var profile = Storage.load();
-  var l = CONTENT.landing;
-  var ctaText = profile ? l.continueCta : l.cta;
-  var ctaTarget = profile ? 'today' : 'setup';
+  var c = CONTENT.landing;
 
   var html = '<div class="container">' +
-    '<div class="hero-grid">' +
-      '<div class="hero-content">' +
-        '<div class="landing-wordmark mb-12">' + escHTML(l.wordmark) + '</div>' +
-        '<h1 class="hero-headline">' + escHTML(l.headline) + '</h1>' +
-        '<p class="hero-subline">' + escHTML(l.subline) + ' ' + escHTML(l.subline2) + '</p>' +
-
-        // Signature Animated Journey Curve SVG
-        '<svg class="hero-journey-curve" viewBox="0 0 340 90" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Progress curve illustration">' +
-          '<path d="M 10 78 C 70 74, 140 60, 200 48 C 260 38, 290 28, 330 18 L 330 42 C 290 52, 260 62, 200 70 C 140 78, 70 82, 10 84 Z" fill="#E6F2FC" opacity="0.85"/>' +
-          '<path class="journey-path-line" d="M 12 80 C 80 76, 140 58, 200 44 C 260 32, 290 22, 328 14" stroke="#0B5E9E" stroke-width="3.5" stroke-linecap="round" fill="none"/>' +
-          '<circle cx="80" cy="76" r="5" fill="#FFFFFF" stroke="#0B5E9E" stroke-width="2.5"/>' +
-          '<circle cx="180" cy="51" r="5" fill="#FFFFFF" stroke="#0B5E9E" stroke-width="2.5"/>' +
-          '<circle cx="290" cy="22" r="6" fill="#F26B1D" stroke="#FFFFFF" stroke-width="2.5"/>' +
-        '</svg>' +
-
-        '<div class="hero-actions">' +
-          '<button type="button" class="btn btn-primary" data-scroll="' + ctaTarget + '">' + escHTML(ctaText) + '</button>' +
-          '<button type="button" class="btn btn-secondary" data-scroll="how">' + escHTML(l.howItWorksCta) + '</button>' +
+    '<div class="hero-split">' +
+      // Left Column
+      '<div class="hero-left">' +
+        '<span class="hero-wordmark">' + escHTML(CONTENT.brand || 'Be Bodywise') + '</span>' +
+        '<h1 class="hero-headline">' + escHTML(c.headline) + '</h1>' +
+        '<p class="hero-subline">' + escHTML(c.subline) + '</p>' +
+        '<div class="hero-benefits">' +
+          '<div class="benefit-row">' +
+            '<span class="benefit-icon">' + ICONS.check + '</span>' +
+            '<span class="benefit-text">' + escHTML(c.benefits[0]) + '</span>' +
+          '</div>' +
+          '<div class="benefit-row">' +
+            '<span class="benefit-icon">' + ICONS.check + '</span>' +
+            '<span class="benefit-text">' + escHTML(c.benefits[1]) + '</span>' +
+          '</div>' +
+          '<div class="benefit-row">' +
+            '<span class="benefit-icon">' + ICONS.check + '</span>' +
+            '<span class="benefit-text">' + escHTML(c.benefits[2]) + '</span>' +
+          '</div>' +
         '</div>' +
-
-        '<div class="privacy-chip">' +
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' +
-          '<span>' + escHTML(l.privacyBadge) + '</span>' +
+        '<div class="hero-cta-group">' +
+          '<button type="button" class="btn btn-primary" id="hero-get-started" data-scroll="' + (profile ? 'today' : 'setup') + '">' +
+            (profile ? 'Continue your daily ritual \u2192' : escHTML(c.cta) + ' \u2192') +
+          '</button>' +
+          '<span class="privacy-badge">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' +
+            escHTML(c.privacyBadge) +
+          '</span>' +
         '</div>' +
       '</div>' +
 
-      // Floating Stylized Product Preview Card
-      '<div class="hero-visual">' +
-        '<div class="hero-visual-card">' +
-          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">' +
-            '<span style="font-weight:700;font-size:0.92rem;color:var(--deep-navy);">Daily routine</span>' +
-            '<span class="badge badge-blue">85% consistency</span>' +
+      // Right Column
+      '<div class="hero-right">' +
+        '<div class="hero-card">' +
+          '<div class="hero-card-header">' +
+            '<span class="hero-card-tag">' + (profile ? 'Your Ritual' : 'How change happens') + '</span>' +
+            '<span class="hero-card-meta">' + (profile ? Utils.formatDate(Utils.getToday()) : 'Typical pace') + '</span>' +
           '</div>' +
-          '<div style="display:flex;align-items:center;gap:18px;margin-bottom:18px;">' +
-            '<div style="width:72px;height:72px;border-radius:50%;border:6px solid #1c4ed8;border-right-color:#e2e8f0;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--deep-navy);font-size:1.1rem;">6d</div>' +
-            '<div>' +
-              '<div style="font-weight:700;color:var(--deep-navy);font-size:0.95rem;">Hair shedding marker</div>' +
-              '<div style="font-size:0.82rem;color:var(--text-secondary);">Week 6 of 12 · On track</div>' +
-            '</div>' +
-          '</div>' +
-          '<div class="verdict-banner on-track" style="margin:0;padding:12px 14px;">' +
-            '<div class="verdict-label" style="font-size:0.88rem;">' +
-              '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px;margin-right:6px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' +
-              'On track' +
-            '</div>' +
-            '<div class="verdict-reason" style="font-size:0.8rem;">Changes are in line with typical biology timelines.</div>' +
-          '</div>' +
+          (profile ? getPrimaryCard(profile) :
+            '<div class="journey-line-visual">' +
+              '<svg class="journey-svg" viewBox="0 0 380 140" fill="none">' +
+                '<path d="M 20 110 C 100 105, 180 85, 260 55 C 300 40, 340 35, 360 30 L 360 120 L 20 120 Z" fill="#E6F2FC" opacity="0.6"/>' +
+                '<path class="signature-line" d="M 20 110 C 100 105, 180 85, 260 55 C 300 40, 340 35, 360 30" stroke="#0B5E9E" stroke-width="4" stroke-linecap="round"/>' +
+                '<circle class="milestone-dot" cx="20" cy="110" r="6" fill="#0B5E9E"/>' +
+                '<circle class="milestone-dot" cx="180" cy="85" r="6" fill="#0B5E9E"/>' +
+                '<circle class="milestone-dot" cx="360" cy="30" r="7" fill="#F26B1D"/>' +
+              '</svg>' +
+              '<div class="journey-labels">' +
+                '<span>Week 1 · Foundation</span>' +
+                '<span>Week 4 · Early signs</span>' +
+                '<span>Week 12 · Real change</span>' +
+              '</div>' +
+            '</div>'
+          ) +
         '</div>' +
       '</div>' +
     '</div>' +
-
-    '<a href="#how" class="scroll-cue" data-scroll="how">' +
-      '<span>' + escHTML(l.scrollCue) + '</span>' +
-      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>' +
-    '</a>' +
   '</div>';
 
   container.innerHTML = html;
 
-  container.querySelectorAll('[data-scroll]').forEach(function (el) {
-    el.addEventListener('click', function (e) {
+  var getStartedBtn = container.querySelector('#hero-get-started');
+  if (getStartedBtn) {
+    getStartedBtn.addEventListener('click', function (e) {
       e.preventDefault();
-      var target = el.getAttribute('data-scroll');
+      var target = this.getAttribute('data-scroll');
       scrollToSection(target);
     });
-  });
+  }
 }
 
-/* ---- Section 2: Pinned How It Works (Section 5.2) ---- */
+/* ---- Section 2: How It Works (Section 5.2 - 3 Column Grid & Visible on Load) ---- */
 function renderHowSection(container) {
-  var panels = CONTENT.landing.panels || [];
+  var panels = (CONTENT.landing && CONTENT.landing.panels) || [
+    { step: "1", title: "Set a goal", text: "Choose one focus area and a realistic timeframe.", detail: "About 1 minute." },
+    { step: "2", title: "Check in daily", text: "Follow your morning and evening ritual steps.", detail: "10 seconds a day." },
+    { step: "3", title: "See your results", text: "Track tangible micro-markers week by week.", detail: "Every week." }
+  ];
 
   var html = '<div class="how-stage">' +
     '<div class="container">' +
@@ -2069,19 +2205,19 @@ function renderHowSection(container) {
   panels.forEach(function (p, idx) {
     var svgVisual = '';
     if (idx === 0) {
-      svgVisual = '<svg width="80" height="80" viewBox="0 0 80 80" fill="none" style="margin-bottom:16px;">' +
+      svgVisual = '<svg width="64" height="64" viewBox="0 0 80 80" fill="none" style="margin-bottom:14px;">' +
         '<circle cx="40" cy="40" r="34" stroke="#E6F2FC" stroke-width="6"/>' +
         '<path d="M 18 52 C 28 50, 42 38, 62 24" stroke="#0B5E9E" stroke-width="4" stroke-linecap="round"/>' +
         '<circle cx="62" cy="24" r="6" fill="#F26B1D"/>' +
         '</svg>';
     } else if (idx === 1) {
-      svgVisual = '<svg width="80" height="80" viewBox="0 0 80 80" fill="none" style="margin-bottom:16px;">' +
+      svgVisual = '<svg width="64" height="64" viewBox="0 0 80 80" fill="none" style="margin-bottom:14px;">' +
         '<circle cx="40" cy="40" r="32" stroke="#1c4ed8" stroke-width="5" stroke-linecap="round" stroke-dasharray="160" stroke-dashoffset="30"/>' +
         '<circle cx="40" cy="40" r="22" stroke="#0284c7" stroke-width="5" stroke-linecap="round" stroke-dasharray="110" stroke-dashoffset="20"/>' +
         '<circle cx="40" cy="40" r="12" stroke="#0d9488" stroke-width="5" stroke-linecap="round" stroke-dasharray="60" stroke-dashoffset="0"/>' +
         '</svg>';
     } else {
-      svgVisual = '<svg width="80" height="80" viewBox="0 0 80 80" fill="none" style="margin-bottom:16px;">' +
+      svgVisual = '<svg width="64" height="64" viewBox="0 0 80 80" fill="none" style="margin-bottom:14px;">' +
         '<rect x="10" y="16" width="60" height="48" rx="8" fill="#F0F6FC"/>' +
         '<path d="M 14 54 C 28 50, 44 36, 66 26 L 66 38 C 44 48, 28 58, 14 60 Z" fill="#E6F2FC"/>' +
         '<path d="M 14 56 C 28 52, 44 38, 66 28" stroke="#0B5E9E" stroke-width="3.5" stroke-linecap="round"/>' +
@@ -2089,332 +2225,387 @@ function renderHowSection(container) {
         '</svg>';
     }
 
-    html += '<div class="how-panel' + (idx === 0 ? ' active' : ' inactive') + '" data-panel="' + idx + '">' +
+    html += '<div class="how-panel" data-panel="' + idx + '">' +
       svgVisual +
-      '<div class="badge badge-blue mb-8">Step ' + p.step + '</div>' +
-      '<h3 class="card-title" style="font-size:1.35rem;margin-bottom:8px;">' + escHTML(p.title) + '</h3>' +
-      '<p class="card-text" style="font-size:1.02rem;margin-bottom:12px;">' + escHTML(p.text) + '</p>' +
-      '<p class="muted" style="font-size:0.85rem;">' + escHTML(p.detail) + '</p>' +
+      '<div class="badge badge-blue mb-8">Step ' + escHTML(p.step) + '</div>' +
+      '<h3 class="card-title" style="font-size:1.25rem;margin-bottom:8px;">' + escHTML(p.title) + '</h3>' +
+      '<p class="card-text" style="font-size:0.95rem;margin-bottom:10px;">' + escHTML(p.text) + '</p>' +
+      '<p class="muted" style="font-size:0.84rem;">' + escHTML(p.detail) + '</p>' +
       '</div>';
   });
 
   html += '</div></div>' +
+    '</div></div>';
 
-      '<div class="how-progress">' +
-        '<button type="button" class="how-dot active" data-index="0" aria-label="Go to step 1"></button>' +
-        '<button type="button" class="how-dot" data-index="1" aria-label="Go to step 2"></button>' +
-        '<button type="button" class="how-dot" data-index="2" aria-label="Go to step 3"></button>' +
-        '<div class="how-bar-track"><div class="how-bar-fill" id="how-bar-fill"></div></div>' +
+  container.innerHTML = html;
+}
+
+/* ---- Section 3: Smart Fork & Bathroom Shelf Setup (with Living Guide Persona) ---- */
+function renderSetupSection(container) {
+  var profile = Storage.load();
+
+  if (profile && !startState.editing) {
+    var concernCfg = Utils.getConcernConfig(profile.concern);
+    var pCount = (profile.products || []).length;
+    var html = '<div class="container">' +
+      '<div class="section-header text-center">' +
+        '<h2 class="section-title">Your plan</h2>' +
+        '<p class="section-subline">' + escHTML(concernCfg.label) + ' routine · ' + pCount + ' formulas on your shelf</p>' +
+      '</div>' +
+
+      '<div class="card text-center" style="max-width:560px;margin:0 auto;padding:32px 24px;">' +
+        '<div class="guide-speech-card" style="margin-bottom:16px;">' +
+          '<div class="guide-avatar-circle">' + ICONS.guideAvatar + '</div>' +
+          '<div class="guide-speech-body text-left">' +
+            '<div class="guide-speech-title">' + escHTML(CONTENT.guide.avatarTitle) + '</div>' +
+            '<div class="guide-speech-text">Your bathroom shelf is set up! Ready to check off today\'s ritual?</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:12px;justify-content:center;margin-top:20px;">' +
+          '<button type="button" class="btn btn-primary" id="btn-go-today">Open today\'s ritual \u2192</button>' +
+          '<button type="button" class="btn btn-secondary" id="btn-edit-plan">Update shelf formulas</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+    container.innerHTML = html;
+
+    var goTodayBtn = container.querySelector('#btn-go-today');
+    if (goTodayBtn) goTodayBtn.addEventListener('click', function () { scrollToSection('today'); });
+
+    var editPlanBtn = container.querySelector('#btn-edit-plan');
+    if (editPlanBtn) {
+      editPlanBtn.addEventListener('click', function () {
+        prefillStartState(profile);
+        startState.forkChoice = 'owned';
+        startState.step = 0;
+        renderSetupSection(container);
+      });
+    }
+    return;
+  }
+
+  // If no forkChoice yet: Render Screen 1 "Do you already have a Bodywise product?"
+  if (!startState.forkChoice) {
+    renderSmartForkScreen(container);
+    return;
+  }
+
+  // If forkChoice is exploring: Render Curated Discovery Catalog
+  if (startState.forkChoice === 'exploring') {
+    renderDiscoveryCatalog(container);
+    return;
+  }
+
+  // If forkChoice is owned: Render Bathroom Shelf Setup
+  renderBathroomShelfSetup(container);
+}
+
+// 1. Smart Fork Question
+function renderSmartForkScreen(container) {
+  var fork = CONTENT.fork;
+  var html = '<div class="container">' +
+    '<div class="section-header text-center">' +
+      '<h2 class="section-title">Start your routine</h2>' +
+      '<p class="section-subline">' + escHTML(fork.subline) + '</p>' +
+    '</div>' +
+
+    '<div class="card" style="max-width:620px;margin:0 auto;padding:32px 24px;">' +
+      '<div class="guide-speech-card">' +
+        '<div class="guide-avatar-circle">' + ICONS.guideAvatar + '</div>' +
+        '<div class="guide-speech-body">' +
+          '<div class="guide-speech-title">' + escHTML(CONTENT.guide.avatarTitle) + '</div>' +
+          '<div class="guide-speech-text">Welcome! Let\'s personalize your companion. Do you already have your Bodywise formulas?</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<h3 class="card-title text-center mb-16" style="font-size:1.15rem;">' + escHTML(fork.question) + '</h3>' +
+
+      '<div class="fork-options-grid">' +
+        '<button type="button" class="fork-card-btn" data-fork="owned">' +
+          '<div class="fork-btn-title">' + escHTML(fork.options[0].title) + '</div>' +
+          '<div class="fork-btn-desc">' + escHTML(fork.options[0].desc) + '</div>' +
+        '</button>' +
+
+        '<button type="button" class="fork-card-btn" data-fork="exploring">' +
+          '<div class="fork-btn-title">' + escHTML(fork.options[1].title) + '</div>' +
+          '<div class="fork-btn-desc">' + escHTML(fork.options[1].desc) + '</div>' +
+        '</button>' +
       '</div>' +
     '</div>' +
   '</div>';
 
   container.innerHTML = html;
+
+  container.querySelectorAll('[data-fork]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      startState.forkChoice = this.getAttribute('data-fork');
+      startState.step = 0;
+      renderSetupSection(container);
+    });
+  });
 }
 
-/* ---- Section 3: Inline Setup with Smart Fork & Bathroom Shelf ---- */
-function renderSetupSection(container) {
-  var profile = Storage.load();
+// 2. Curated Product Discovery
+function renderDiscoveryCatalog(container) {
+  var discList = CONTENT.discovery || [];
+  var html = '<div class="container">' +
+    '<div class="section-header text-center">' +
+      '<h2 class="section-title">Explore Bodywise routines</h2>' +
+      '<p class="section-subline">Browse science-backed formulas on the official store.</p>' +
+    '</div>' +
 
-  // If returning user has a profile and is not currently editing:
-  if (profile && !startState.editing) {
-    var cfg = Utils.getConcernConfig(profile.concern);
-    var html = '<div class="container">' +
-      '<div class="setup-card">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">' +
-          '<div>' +
-            '<span class="badge badge-blue">Bathroom shelf</span>' +
-            '<h2 class="card-title mt-8" style="font-size:1.3rem;">' + escHTML(profile.name ? (profile.name + "\'s routine plan") : 'Your bathroom shelf') + '</h2>' +
-          '</div>' +
-          '<button type="button" class="btn btn-secondary btn-sm" id="btn-edit-plan">Edit shelf</button>' +
-        '</div>' +
-        '<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:16px;margin-bottom:20px;">' +
-          '<div class="product-output"><div class="po-label">Focus</div><div class="po-value">' + escHTML(cfg.label) + '</div></div>' +
-          '<div class="product-output"><div class="po-label">Watched marker</div><div class="po-value">' + escHTML(profile.marker || 'Watched marker') + '</div></div>' +
-          '<div class="product-output"><div class="po-label">Routine time</div><div class="po-value">' + escHTML(profile.routineTime || 'morning') + '</div></div>' +
-          '<div class="product-output"><div class="po-label">Products on shelf</div><div class="po-value">' + ((profile.products && profile.products.length) || 1) + ' items</div></div>' +
-        '</div>' +
-        '<div style="display:flex;justify-content:flex-end;">' +
-          '<button type="button" class="btn btn-primary" data-scroll="today">Go to daily ritual →</button>' +
+    '<div style="max-width:880px;margin:0 auto;">' +
+      '<div class="guide-speech-card" style="margin-bottom:20px;">' +
+        '<div class="guide-avatar-circle">' + ICONS.guideAvatar + '</div>' +
+        '<div class="guide-speech-body">' +
+          '<div class="guide-speech-title">' + escHTML(CONTENT.guide.avatarTitle) + '</div>' +
+          '<div class="guide-speech-text">Find your formula on our official store. When your order arrives, we will set up your bathroom shelf!</div>' +
         '</div>' +
       '</div>' +
+
+      '<div class="discovery-grid mb-24">';
+
+  discList.forEach(function (item) {
+    html += '<div class="discovery-card">' +
+      '<div class="badge badge-blue mb-8">' + escHTML(item.concern) + '</div>' +
+      '<h3 class="card-title" style="font-size:1.15rem;margin-bottom:6px;">' + escHTML(item.product) + '</h3>' +
+      '<p class="card-text mb-16" style="font-size:0.88rem;color:var(--text-secondary);">' + escHTML(item.benefit) + '</p>' +
+      '<a href="' + escHTML(item.url) + '" target="_blank" rel="noopener" class="outbound-link-btn">' +
+        'View formula on Bodywise \u2197' +
+      '</a>' +
     '</div>';
-    container.innerHTML = html;
+  });
 
-    var editBtn = document.getElementById('btn-edit-plan');
-    if (editBtn) {
-      editBtn.addEventListener('click', function () {
-        prefillStartState(profile);
-        startState.editing = true;
-        startState.forkChoice = 'owned';
-        renderSetupSection(container);
-      });
-    }
-
-    container.querySelectorAll('[data-scroll]').forEach(function (el) {
-      el.addEventListener('click', function (e) {
-        e.preventDefault();
-        scrollToSection(el.getAttribute('data-scroll'));
-      });
-    });
-    return;
-  }
-
-  // Smart Fork: Question "Do you already have a Bodywise product?"
-  if (!startState.forkChoice) {
-    var fk = CONTENT.fork;
-    var html = '<div class="container">' +
-      '<div class="setup-card text-center" style="max-width:680px;margin:0 auto;padding:36px 24px;">' +
-        '<span class="badge badge-blue mb-12">Getting started</span>' +
-        '<h2 class="card-title mb-8" style="font-size:1.45rem;">' + escHTML(fk.question) + '</h2>' +
-        '<p class="card-text mb-24">' + escHTML(fk.why) + '</p>' +
-        '<div class="fork-options-grid">' +
-          '<button type="button" class="fork-card-btn" id="fork-btn-owned">' +
-            '<div style="display:flex;align-items:center;justify-content:space-between;">' +
-              '<span class="fork-card-title">' + escHTML(fk.options[0].title) + '</span>' +
-              '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>' +
-            '</div>' +
-            '<p class="fork-card-sub">' + escHTML(fk.options[0].sub) + '</p>' +
-          '</button>' +
-          '<button type="button" class="fork-card-btn" id="fork-btn-exploring">' +
-            '<div style="display:flex;align-items:center;justify-content:space-between;">' +
-              '<span class="fork-card-title">' + escHTML(fk.options[1].title) + '</span>' +
-              '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>' +
-            '</div>' +
-            '<p class="fork-card-sub">' + escHTML(fk.options[1].sub) + '</p>' +
-          '</button>' +
+  html += '</div>' +
+      '<div class="card text-center" style="padding:24px;background:#F0F7FF;border:1.5px solid #BFDBFE;">' +
+        '<h4 style="font-size:1.05rem;font-weight:700;color:var(--deep-navy);margin-bottom:6px;">Already placed an order?</h4>' +
+        '<p class="card-text mb-14" style="font-size:0.9rem;">If your product is on the way, you can build your bathroom shelf now.</p>' +
+        '<div style="display:flex;gap:12px;justify-content:center;">' +
+          '<button type="button" class="btn btn-primary" id="btn-ordered-setup">I have ordered, start setup \u2192</button>' +
+          '<button type="button" class="btn btn-secondary" id="btn-back-fork">Back</button>' +
         '</div>' +
       '</div>' +
-    '</div>';
-    container.innerHTML = html;
+    '</div>' +
+  '</div>';
 
-    document.getElementById('fork-btn-owned').addEventListener('click', function () {
+  container.innerHTML = html;
+
+  var orderedBtn = container.querySelector('#btn-ordered-setup');
+  if (orderedBtn) {
+    orderedBtn.addEventListener('click', function () {
       startState.forkChoice = 'owned';
       startState.step = 0;
       renderSetupSection(container);
     });
-
-    document.getElementById('fork-btn-exploring').addEventListener('click', function () {
-      startState.forkChoice = 'exploring';
-      renderSetupSection(container);
-    });
-    return;
   }
 
-  // Branch B: Exploring / Haven't bought yet -> Curated Discovery Catalog
-  if (startState.forkChoice === 'exploring') {
-    var fk = CONTENT.fork;
-    var list = CONTENT.discovery || [];
-    var html = '<div class="container">' +
-      '<div class="setup-card" style="max-width:880px;">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">' +
-          '<div>' +
-            '<span class="badge badge-blue">Official catalog</span>' +
-            '<h2 class="card-title mt-8" style="font-size:1.4rem;">' + escHTML(fk.discoveryHeader) + '</h2>' +
-            '<p class="card-text mb-0">' + escHTML(fk.discoverySub) + '</p>' +
-          '</div>' +
-          '<button type="button" class="btn btn-secondary btn-sm" id="btn-back-to-fork">Back</button>' +
-        '</div>' +
-
-        '<div class="discovery-grid">';
-
-    list.forEach(function (d) {
-      html += '<div class="discovery-card">' +
-        '<div class="discovery-card-header">' +
-          '<span class="discovery-concern-badge">' + escHTML(d.concern) + '</span>' +
-          '<h3 class="discovery-product-name">' + escHTML(d.product) + '</h3>' +
-          '<p class="discovery-benefit">' + escHTML(d.benefit) + '</p>' +
-        '</div>' +
-        '<a href="' + escHTML(d.url) + '" target="_blank" rel="noopener noreferrer" class="outbound-link-btn">' +
-          '<span>' + escHTML(fk.outboundBtn) + '</span>' +
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>' +
-        '</a>' +
-      '</div>';
-    });
-
-    html += '</div>' +
-
-        '<div class="card text-center" style="background:var(--pale-blue);padding:24px;border:none;">' +
-          '<p style="font-weight:600;color:var(--deep-navy);margin-bottom:12px;">Already ordered and waiting for delivery?</p>' +
-          '<button type="button" class="btn btn-primary" id="btn-ordered-setup">' + escHTML(fk.hasOrderedBtn) + '</button>' +
-        '</div>' +
-      '</div>' +
-    '</div>';
-    container.innerHTML = html;
-
-    document.getElementById('btn-back-to-fork').addEventListener('click', function () {
+  var backBtn = container.querySelector('#btn-back-fork');
+  if (backBtn) {
+    backBtn.addEventListener('click', function () {
       startState.forkChoice = null;
       renderSetupSection(container);
     });
-
-    document.getElementById('btn-ordered-setup').addEventListener('click', function () {
-      startState.forkChoice = 'owned';
-      startState.step = 0;
-      renderSetupSection(container);
-    });
-    return;
   }
-
-  // Branch A: Existing customer -> Bathroom Shelf Setup
-  renderBathroomShelfSetup(container);
 }
 
-/* ---- Bathroom Shelf Guided Setup ---- */
+// 3. Bathroom Shelf Setup with Living Guide Speech Bubbles
 function renderBathroomShelfSetup(container) {
-  var step = startState.step || 0;
   var ans = startState.answers;
+  ans.ownedProducts = ans.ownedProducts || [];
+  var step = startState.step || 0;
+  var speech = CONTENT.guide.setupSpeech;
 
   // Step 0: Name
   if (step === 0) {
-    var html = '<div class="container"><div class="setup-card" style="max-width:600px;">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
-        '<span class="badge badge-blue">Shelf setup · 1 of 4</span>' +
-        '<button type="button" class="btn btn-sm" id="shelf-back-fork" style="background:none;border:none;color:var(--primary-blue);">Back</button>' +
-      '</div>' +
-      '<h2 class="card-title mb-6">What should we call you?</h2>' +
-      '<p class="muted mb-16" style="font-size:0.86rem;">To personalize your bathroom shelf space.</p>' +
-      '<div class="field"><label for="user-name">Your first name</label>' +
-        '<input type="text" id="user-name" placeholder="e.g. Priya" value="' + escHTML(ans.name) + '" autofocus>' +
-      '</div>' +
-      '<div style="display:flex;justify-content:flex-end;margin-top:24px;">' +
-        '<button type="button" class="btn btn-primary" id="shelf-next-name">Next step →</button>' +
-      '</div>' +
-    '</div></div>';
+    var html = '<div class="container">' +
+      '<div class="card" style="max-width:540px;margin:0 auto;padding:32px 24px;">' +
+        '<div class="guide-speech-card">' +
+          '<div class="guide-avatar-circle">' + ICONS.guideAvatar + '</div>' +
+          '<div class="guide-speech-body">' +
+            '<div class="guide-speech-title">' + escHTML(CONTENT.guide.avatarTitle) + '</div>' +
+            '<div class="guide-speech-text">' + escHTML(speech.step1) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<h2 class="section-title mb-4">Your first name</h2>' +
+        '<p class="muted mb-16" style="font-size:0.86rem;">To personalize your daily shelf space.</p>' +
+        '<div class="field"><label for="user-name">Your first name</label>' +
+          '<input type="text" id="user-name" placeholder="e.g. Priya" value="' + escHTML(ans.name) + '" autofocus>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:flex-end;margin-top:24px;">' +
+          '<button type="button" class="btn btn-primary" id="shelf-next-name">Next step \u2192</button>' +
+        '</div>' +
+      '</div></div>';
+
     container.innerHTML = html;
 
-    document.getElementById('shelf-back-fork').addEventListener('click', function () {
-      startState.forkChoice = null;
-      renderSetupSection(container);
-    });
+    var input = document.getElementById('user-name');
+    if (input) {
+      input.addEventListener('focus', function () { this.classList.add('focus-ring-active'); });
+      input.addEventListener('blur', function () { this.classList.remove('focus-ring-active'); });
+      input.addEventListener('input', function () { ans.name = Utils.toTitleCase(this.value); });
+    }
 
     document.getElementById('shelf-next-name').addEventListener('click', function () {
-      var val = document.getElementById('user-name').value.trim();
-      ans.name = Utils.toTitleCase(val || 'Friend');
+      if (!ans.name) ans.name = 'Friend';
       startState.step = 1;
-      renderSetupSection(container);
+      renderBathroomShelfSetup(container);
     });
     return;
   }
 
-  // Step 1: Concern selection
+  // Step 1: Concern Selection
   if (step === 1) {
-    var html = '<div class="container"><div class="setup-card" style="max-width:680px;">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
-        '<span class="badge badge-blue">Shelf setup · 2 of 4</span>' +
-        '<button type="button" class="btn btn-sm" id="shelf-back-name" style="background:none;border:none;color:var(--primary-blue);">Back</button>' +
-      '</div>' +
-      '<h2 class="card-title mb-6">What area is your product for?</h2>' +
-      '<p class="muted mb-16" style="font-size:0.86rem;">Pick your routine focus.</p>' +
-      '<div class="chip-group mb-20">';
+    var html = '<div class="container">' +
+      '<div class="card" style="max-width:580px;margin:0 auto;padding:32px 24px;">' +
+        '<div class="guide-speech-card">' +
+          '<div class="guide-avatar-circle">' + ICONS.guideAvatar + '</div>' +
+          '<div class="guide-speech-body">' +
+            '<div class="guide-speech-title">' + escHTML(CONTENT.guide.avatarTitle) + '</div>' +
+            '<div class="guide-speech-text">' + escHTML(speech.step2) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<h2 class="section-title mb-4">Choose your focus area</h2>' +
+        '<p class="muted mb-16" style="font-size:0.86rem;">We tailor your routine steps to this concern.</p>' +
+        '<div class="chip-group" role="radiogroup">';
 
-    CONTENT.quiz.concerns.forEach(function (c) {
-      var sel = (ans.concern === c.value);
-      html += '<button type="button" class="chip' + (sel ? ' selected' : '') + '" data-concern="' + c.value + '">' + escHTML(c.label) + '</button>';
+    CONTENT.quiz.concerns.forEach(function (opt) {
+      var sel = (ans.concern === opt.value);
+      html += '<button type="button" class="chip' + (sel ? ' selected focus-ring-active' : '') + '" data-concern="' + opt.value + '">' +
+        escHTML(opt.label) +
+      '</button>';
     });
 
-    html += '</div></div></div>';
+    html += '</div>' +
+        '<div style="display:flex;justify-content:space-between;margin-top:24px;">' +
+          '<button type="button" class="btn btn-secondary" id="shelf-back-concern">Back</button>' +
+          '<button type="button" class="btn btn-primary" id="shelf-next-concern"' + (ans.concern ? '' : ' disabled') + '>Next step \u2192</button>' +
+        '</div>' +
+      '</div></div>';
+
     container.innerHTML = html;
 
-    document.getElementById('shelf-back-name').addEventListener('click', function () {
-      startState.step = 0;
-      renderSetupSection(container);
+    container.querySelectorAll('[data-concern]').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        ans.concern = this.getAttribute('data-concern');
+        ans.ownedProducts = [];
+        container.querySelectorAll('[data-concern]').forEach(function (c) { c.classList.remove('selected', 'focus-ring-active'); });
+        this.classList.add('selected', 'focus-ring-active');
+        document.getElementById('shelf-next-concern').disabled = false;
+      });
     });
 
-    container.querySelectorAll('[data-concern]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        ans.concern = btn.getAttribute('data-concern');
+    document.getElementById('shelf-back-concern').addEventListener('click', function () {
+      startState.step = 0;
+      renderBathroomShelfSetup(container);
+    });
+
+    document.getElementById('shelf-next-concern').addEventListener('click', function () {
+      if (ans.concern) {
         startState.step = 2;
-        renderSetupSection(container);
-      });
+        renderBathroomShelfSetup(container);
+      }
     });
     return;
   }
 
-  // Step 2: Bathroom Shelf Product Check-off (ZERO shopping recommendations!)
+  // Step 2: Check off Owned Products
   if (step === 2) {
-    var concern = ans.concern || 'hair';
-    var catalogItems = CONTENT.catalog[concern] || [];
-    ans.ownedProducts = ans.ownedProducts || [];
+    var catalog = CONTENT.catalog[ans.concern] || [];
+    var html = '<div class="container">' +
+      '<div class="card" style="max-width:640px;margin:0 auto;padding:32px 24px;">' +
+        '<div class="guide-speech-card">' +
+          '<div class="guide-avatar-circle">' + ICONS.guideAvatar + '</div>' +
+          '<div class="guide-speech-body">' +
+            '<div class="guide-speech-title">' + escHTML(CONTENT.guide.avatarTitle) + '</div>' +
+            '<div class="guide-speech-text">' + escHTML(speech.step3) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<h2 class="section-title mb-4">Your bathroom shelf</h2>' +
+        '<p class="muted mb-16" style="font-size:0.86rem;">Select every formula you currently have with you.</p>' +
+        '<div class="shelf-products-grid">';
 
-    var html = '<div class="container"><div class="setup-card" style="max-width:680px;">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
-        '<span class="badge badge-blue">Shelf setup · 3 of 4</span>' +
-        '<button type="button" class="btn btn-sm" id="shelf-back-concern" style="background:none;border:none;color:var(--primary-blue);">Back</button>' +
-      '</div>' +
-      '<h2 class="card-title mb-4">What products are on your shelf?</h2>' +
-      '<p class="muted mb-16" style="font-size:0.86rem;">Check off everything you own. We will build your checklist around them.</p>' +
-      '<div class="shelf-products-grid">';
-
-    catalogItems.forEach(function (p) {
+    catalog.forEach(function (p) {
       var isChecked = ans.ownedProducts.indexOf(p.id) >= 0;
-      html += '<div class="shelf-product-item' + (isChecked ? ' selected' : '') + '" data-prod-id="' + p.id + '">' +
-        '<div class="shelf-checkbox">' + (isChecked ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : '') + '</div>' +
+      html += '<div class="shelf-product-item' + (isChecked ? ' selected focus-ring-active' : '') + '" data-prod-id="' + p.id + '">' +
+        '<div class="shelf-checkbox">' + (isChecked ? ICONS.check : '') + '</div>' +
         '<span style="font-size:0.92rem;font-weight:600;color:var(--deep-navy);">' + escHTML(p.name) + '</span>' +
       '</div>';
     });
 
     html += '</div>' +
-      '<div style="display:flex;justify-content:flex-end;margin-top:20px;">' +
-        '<button type="button" class="btn btn-primary" id="shelf-next-timing">Next: Timing →</button>' +
-      '</div>' +
-    '</div></div>';
-    container.innerHTML = html;
+        '<div style="display:flex;justify-content:space-between;margin-top:24px;">' +
+          '<button type="button" class="btn btn-secondary" id="shelf-back-concern">Back</button>' +
+          '<button type="button" class="btn btn-primary" id="shelf-next-products"' + (ans.ownedProducts.length ? '' : ' disabled') + '>Next step \u2192</button>' +
+        '</div>' +
+      '</div></div>';
 
-    document.getElementById('shelf-back-concern').addEventListener('click', function () {
-      startState.step = 1;
-      renderSetupSection(container);
-    });
+    container.innerHTML = html;
 
     container.querySelectorAll('.shelf-product-item').forEach(function (item) {
       item.addEventListener('click', function () {
-        var pid = item.getAttribute('data-prod-id');
+        var pid = this.getAttribute('data-prod-id');
         var idx = ans.ownedProducts.indexOf(pid);
-        if (idx >= 0) ans.ownedProducts.splice(idx, 1);
-        else ans.ownedProducts.push(pid);
+        if (idx >= 0) {
+          ans.ownedProducts.splice(idx, 1);
+        } else {
+          ans.ownedProducts.push(pid);
+        }
         renderBathroomShelfSetup(container);
       });
     });
 
-    document.getElementById('shelf-next-timing').addEventListener('click', function () {
-      if (!ans.ownedProducts.length && catalogItems.length) {
-        ans.ownedProducts.push(catalogItems[0].id);
+    document.getElementById('shelf-back-concern').addEventListener('click', function () {
+      startState.step = 1;
+      renderBathroomShelfSetup(container);
+    });
+
+    document.getElementById('shelf-next-products').addEventListener('click', function () {
+      if (ans.ownedProducts.length) {
+        startState.step = 3;
+        renderBathroomShelfSetup(container);
       }
-      startState.step = 3;
-      renderSetupSection(container);
     });
     return;
   }
 
-  // Step 3: Timing & Start Date -> Finish & Generate Ritual
+  // Step 3: Routine Timing & Start Date -> "Build my daily routine"
   if (step === 3) {
-    var html = '<div class="container"><div class="setup-card" style="max-width:640px;">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
-        '<span class="badge badge-blue">Shelf setup · 4 of 4</span>' +
-        '<button type="button" class="btn btn-sm" id="shelf-back-products" style="background:none;border:none;color:var(--primary-blue);">Back</button>' +
-      '</div>' +
-      '<h2 class="card-title mb-6">When do you do your routine?</h2>' +
-      '<p class="muted mb-16" style="font-size:0.86rem;">We will set up your AM / PM daily ritual checklist.</p>' +
-      '<div class="field mb-16"><label>Daily timing</label>' +
-        '<div class="chip-group">' +
-          '<button type="button" class="chip' + (ans.routineTime === 'morning' ? ' selected' : '') + '" data-time="morning">Morning only</button>' +
-          '<button type="button" class="chip' + (ans.routineTime === 'night' ? ' selected' : '') + '" data-time="night">Night only</button>' +
-          '<button type="button" class="chip' + (ans.routineTime === 'both' ? ' selected' : '') + '" data-time="both">Both AM & PM</button>' +
+    var html = '<div class="container">' +
+      '<div class="card" style="max-width:580px;margin:0 auto;padding:32px 24px;">' +
+        '<div class="guide-speech-card">' +
+          '<div class="guide-avatar-circle">' + ICONS.guideAvatar + '</div>' +
+          '<div class="guide-speech-body">' +
+            '<div class="guide-speech-title">' + escHTML(CONTENT.guide.avatarTitle) + '</div>' +
+            '<div class="guide-speech-text">' + escHTML(speech.step4) + '</div>' +
+          '</div>' +
         '</div>' +
-      '</div>' +
-      '<div class="field mb-24"><label>When did you start using it?</label>' +
-        '<div class="chip-group">' +
-          '<button type="button" class="chip' + (ans.startBucket === 'notYet' ? ' selected' : '') + '" data-bucket="notYet">Starting today</button>' +
-          '<button type="button" class="chip' + (ans.startBucket === 'under1m' ? ' selected' : '') + '" data-bucket="under1m">Past 2 weeks</button>' +
-          '<button type="button" class="chip' + (ans.startBucket === '1to3m' ? ' selected' : '') + '" data-bucket="1to3m">1 to 2 months ago</button>' +
+        '<h2 class="section-title mb-4">When can you fit it in?</h2>' +
+        '<p class="muted mb-16" style="font-size:0.86rem;">We will set your AM / PM daily ritual steps.</p>' +
+        '<div class="chip-group mb-20">' +
+          '<button type="button" class="chip' + (ans.routineTime === 'morning' ? ' selected focus-ring-active' : '') + '" data-time="morning">Morning only</button>' +
+          '<button type="button" class="chip' + (ans.routineTime === 'night' ? ' selected focus-ring-active' : '') + '" data-time="night">Night only</button>' +
+          '<button type="button" class="chip' + (ans.routineTime === 'both' ? ' selected focus-ring-active' : '') + '" data-time="both">Both morning & night</button>' +
         '</div>' +
-      '</div>' +
-      '<button type="button" class="btn btn-primary btn-full" id="btn-save-shelf">Build my daily ritual →</button>' +
-    '</div></div>';
+
+        '<h3 class="card-title mb-4" style="font-size:1rem;">When did you start?</h3>' +
+        '<div class="chip-group mb-24">' +
+          '<button type="button" class="chip' + (ans.startBucket === 'notYet' ? ' selected focus-ring-active' : '') + '" data-bucket="notYet">Starting today</button>' +
+          '<button type="button" class="chip' + (ans.startBucket === 'under1m' ? ' selected focus-ring-active' : '') + '" data-bucket="under1m">Past 2 weeks</button>' +
+          '<button type="button" class="chip' + (ans.startBucket === '1to3m' ? ' selected focus-ring-active' : '') + '" data-bucket="1to3m">1 to 2 months ago</button>' +
+        '</div>' +
+
+        '<div style="display:flex;justify-content:space-between;margin-top:24px;">' +
+          '<button type="button" class="btn btn-secondary" id="shelf-back-products">Back</button>' +
+          '<button type="button" class="btn btn-primary" id="btn-save-shelf">Build my daily routine \u2192</button>' +
+        '</div>' +
+      '</div></div>';
+
     container.innerHTML = html;
 
     document.getElementById('shelf-back-products').addEventListener('click', function () {
       startState.step = 2;
-      renderSetupSection(container);
+      renderBathroomShelfSetup(container);
     });
 
     container.querySelectorAll('[data-time]').forEach(function (b) {
@@ -2461,9 +2652,15 @@ function renderBathroomShelfSetup(container) {
       Storage.save(profile);
       clearDraft();
       startState.editing = false;
+      
+      // Complete all section DOM updates, then smoothly transition to #today with entry animation
       renderAllSections();
-      scrollToSection('today');
-      UI.toast('Bathroom shelf ready. Today\'s ritual generated.');
+      setTimeout(function () {
+        scrollToSection('today');
+        var todaySec = document.getElementById('today');
+        if (todaySec) todaySec.classList.add('fade-in-entry');
+      }, 60);
+      UI.toast('Bathroom shelf ready. Daily ritual generated.');
     });
   }
 }
@@ -2477,7 +2674,213 @@ function renderStart() {
   }
 }
 
-/* ---- Section 4: Timeline (Section 7) ---- */
+/* ---- Section 4: Daily Ritual (with Guide Greeting & Independent Step Toggles) ---- */
+function renderCheckinSection(container) {
+  var profile = Storage.load();
+
+  if (!profile) {
+    var p = (CONTENT.landing && CONTENT.landing.placeholder) || { title: "Set up your routine first", text: "Complete your quick setup to unlock this section.", cta: "Set up my plan" };
+    container.innerHTML = '<div class="container">' +
+      '<div class="section-header text-center">' +
+        '<h2 class="section-title">Daily ritual</h2>' +
+        '<p class="section-subline">Ten seconds a day to record your routine and note how you feel.</p>' +
+      '</div>' +
+      '<div class="card text-center" style="max-width:540px;margin:0 auto;padding:36px 24px;">' +
+        '<h3 class="card-title mb-8">' + escHTML(p.title) + '</h3>' +
+        '<p class="card-text mb-20">' + escHTML(p.text) + '</p>' +
+        '<button type="button" class="btn btn-primary" data-scroll="setup">' + escHTML(p.cta) + '</button>' +
+      '</div>' +
+    '</div>';
+    container.querySelector('[data-scroll]').addEventListener('click', function (e) {
+      e.preventDefault();
+      scrollToSection('setup');
+    });
+    return;
+  }
+
+  var today = Utils.getToday();
+  var isCheckedIn = Utils.isCheckedInToday(profile);
+  var checkinToday = Utils.getCheckinForDate(profile, today) || { ritualDone: [] };
+  var ritualDone = checkinToday.ritualDone || [];
+  var streak = Utils.getStreak(profile.checkins);
+
+  // Time-of-day greeting
+  var hour = new Date().getHours();
+  var timeSlot = (hour < 12) ? 'morning' : ((hour < 17) ? 'afternoon' : 'evening');
+  var greetingTpl = CONTENT.guide.greetings[timeSlot];
+  var greetingText = Utils.templateStr(greetingTpl, { name: profile.name, streak: Math.max(1, streak) });
+
+  var mindset = Utils.getDailyMindsetQuote(today);
+  var templates = CONTENT.ritualTemplates || {};
+  var template = templates[profile.concern] || templates.hair;
+  var rTime = profile.routineTime || 'morning';
+
+  var allStepIds = [];
+  if (rTime === 'morning' || rTime === 'both') {
+    (template.am || []).forEach(function (s) { allStepIds.push(s.id); });
+  }
+  if (rTime === 'night' || rTime === 'both') {
+    (template.pm || []).forEach(function (s) { allStepIds.push(s.id); });
+  }
+
+  var html = '<div class="container">' +
+    '<div class="section-header">' +
+      '<h2 class="section-title">Daily ritual</h2>' +
+      '<p class="section-subline">' + Utils.formatDate(today) + ' · Day ' + (Utils.daysBetween(profile.startDate, today) + 1) + '</p>' +
+    '</div>' +
+
+    // Living Guide Persona Greeting Banner
+    '<div class="guide-speech-card">' +
+      '<div class="guide-avatar-circle">' + ICONS.guideAvatar + '</div>' +
+      '<div class="guide-speech-body">' +
+        '<div class="guide-speech-title">' + escHTML(CONTENT.guide.avatarTitle) + '</div>' +
+        '<div class="guide-speech-text">' + escHTML(greetingText) + '</div>' +
+      '</div>' +
+    '</div>' +
+
+    // Daily Mindset & Motivation Card
+    '<div class="mindset-card mb-24">' +
+      '<div class="mindset-badge">Daily mindset</div>' +
+      '<div class="mindset-quote">' + escHTML(mindset.quote) + '</div>' +
+      '<div class="mindset-author">' + escHTML(mindset.author) + '</div>' +
+    '</div>' +
+
+    '<div class="checkin-grid">' +
+      // Left Column: Step-by-Step Interactive Ritual Checklist
+      '<div class="checkin-left-col">' +
+        '<div class="card ritual-checklist-card">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+            '<h3 class="card-title" style="margin-bottom:0;">Today\'s formula checklist</h3>' +
+            '<span class="badge badge-blue">' + ritualDone.length + '/' + allStepIds.length + ' done</span>' +
+          '</div>' +
+          '<p class="card-text mb-14" style="font-size:0.86rem;color:var(--text-secondary);">' +
+            'Tap each step as you complete it. Uncheck anytime to redo.' +
+          '</p>';
+
+  // Render AM steps
+  if (rTime === 'morning' || rTime === 'both') {
+    (template.am || []).forEach(function (step) {
+      var isStepDone = ritualDone.indexOf(step.id) >= 0;
+      html += '<div class="ritual-step-item' + (isStepDone ? ' checked' : '') + '" data-step-id="' + step.id + '">' +
+        '<div class="ritual-checkbox">' + (isStepDone ? ICONS.check : '') + '</div>' +
+        '<span class="ritual-step-text"><strong>AM:</strong> ' + escHTML(step.text) + '</span>' +
+      '</div>';
+    });
+  }
+
+  // Render PM steps
+  if (rTime === 'night' || rTime === 'both') {
+    (template.pm || []).forEach(function (step) {
+      var isStepDone = ritualDone.indexOf(step.id) >= 0;
+      html += '<div class="ritual-step-item' + (isStepDone ? ' checked' : '') + '" data-step-id="' + step.id + '">' +
+        '<div class="ritual-checkbox">' + (isStepDone ? ICONS.check : '') + '</div>' +
+        '<span class="ritual-step-text"><strong>PM:</strong> ' + escHTML(step.text) + '</span>' +
+      '</div>';
+    });
+  }
+
+  html += '<button type="button" class="btn-mark-all-done" id="btn-mark-all-done">' +
+      ICONS.check +
+      '<span>Mark all steps done today</span>' +
+    '</button>' +
+  '</div></div>' +
+
+      // Right Column: Circular 180px Check-in Ring Card
+      '<div class="checkin-right-col">' +
+        '<div class="card text-center" style="padding:28px 20px;">' +
+          '<div class="ring-container mb-16" style="display:flex;justify-content:center;">' +
+            '<svg class="checkin-ring' + (isCheckedIn ? ' done pulse' : '') + '" width="140" height="140" viewBox="0 0 180 180" id="ring-btn" role="button" tabindex="0" aria-label="Toggle today check-in" style="cursor:pointer;">' +
+              '<circle cx="90" cy="90" r="76" stroke="#E6F2FC" stroke-width="12" fill="none"/>' +
+              '<circle class="ring-track" cx="90" cy="90" r="76" stroke="#0B5E9E" stroke-width="12" fill="none" stroke-linecap="round" stroke-dasharray="477.5" stroke-dashoffset="' + (isCheckedIn ? '0' : '477.5') + '" style="transition:stroke-dashoffset 0.6s var(--ease-out);"/>' +
+              (isCheckedIn ?
+                '<path class="ring-check" d="M 60 92 L 80 112 L 122 70" stroke="#0B5E9E" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>' :
+                '<text x="90" y="86" text-anchor="middle" font-family="Figtree, sans-serif" font-size="14" font-weight="600" fill="#6B7280">TAP TO</text><text x="90" y="108" text-anchor="middle" font-family="Figtree, sans-serif" font-size="17" font-weight="700" fill="#0F2D5E">COMPLETE</text>'
+              ) +
+            '</svg>' +
+          '</div>' +
+          '<h3 class="card-title mb-6">' + (isCheckedIn ? 'Ritual complete today' : 'Daily status') + '</h3>' +
+          '<p class="card-text mb-16" style="font-size:0.9rem;">' +
+            (isCheckedIn ? 'Great consistency! Your streak is ' + streak + ' days.' : 'Complete your ritual to log today.') +
+          '</p>' +
+          '<div class="dot-row-container mb-12">' +
+            renderDotGrid(profile) +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+
+  container.innerHTML = html;
+
+  // Independent Step Clicks (Clicking toggles ONLY that step)
+  container.querySelectorAll('.ritual-step-item').forEach(function (item) {
+    item.addEventListener('click', function () {
+      var stepId = item.getAttribute('data-step-id');
+      var ci = Utils.getCheckinForDate(profile, today);
+      if (!ci) {
+        ci = { date: today, done: false, rest: false, mood: null, ritualDone: [] };
+        profile.checkins.push(ci);
+      }
+      ci.ritualDone = ci.ritualDone || [];
+      var sIdx = ci.ritualDone.indexOf(stepId);
+      if (sIdx >= 0) {
+        ci.ritualDone.splice(sIdx, 1);
+      } else {
+        ci.ritualDone.push(stepId);
+      }
+
+      // Mark done if all steps are completed
+      ci.done = (ci.ritualDone.length === allStepIds.length && allStepIds.length > 0);
+
+      Storage.save(profile);
+      renderCheckinSection(container);
+      renderDesktopRail();
+      UI.toast(ci.done ? 'All steps complete. Checked in!' : 'Step toggled');
+    });
+  });
+
+  // Explicit "Mark All Done" button
+  var markAllBtn = container.querySelector('#btn-mark-all-done');
+  if (markAllBtn) {
+    markAllBtn.addEventListener('click', function () {
+      var ci = Utils.getCheckinForDate(profile, today);
+      if (!ci) {
+        ci = { date: today, done: true, rest: false, mood: null, ritualDone: allStepIds.slice() };
+        profile.checkins.push(ci);
+      } else {
+        ci.ritualDone = allStepIds.slice();
+        ci.done = true;
+      }
+      Storage.save(profile);
+      renderCheckinSection(container);
+      renderDesktopRail();
+      UI.toast('All ritual steps completed!');
+    });
+  }
+
+  // Ring button full check-in toggle
+  var ringBtn = document.getElementById('ring-btn');
+  if (ringBtn) {
+    ringBtn.addEventListener('click', function () {
+      var ci = Utils.getCheckinForDate(profile, today);
+      if (!ci) {
+        ci = { date: today, done: true, rest: false, mood: null, ritualDone: allStepIds.slice() };
+        profile.checkins.push(ci);
+      } else {
+        ci.done = !ci.done;
+        if (ci.done && (!ci.ritualDone || !ci.ritualDone.length)) {
+          ci.ritualDone = allStepIds.slice();
+        }
+      }
+      Storage.save(profile);
+      renderCheckinSection(container);
+      renderDesktopRail();
+      UI.toast(ci.done ? 'Ritual recorded for today' : 'Check-in undone');
+    });
+  }
+}
+
+/* ---- Section 5: Timeline (Fixed fromWeek / toWeek Duration - NO undefinedw!) ---- */
 function renderTimelineSection(container) {
   var profile = Storage.load();
 
@@ -2515,55 +2918,41 @@ function renderTimelineSection(container) {
     '</div>' +
 
     '<div class="timeline-grid">' +
-      // Left Column: Milestone list
+      // Left Column: Milestone list with clean duration & status tags
       '<div class="timeline-left-col">' +
         '<div class="timeline">';
 
-  cfg.milestones.forEach(function (ms, i) {
-    var isPassed = (currentWk >= ms.week);
-    var isCurrent = (currentWk >= ms.week && (i === cfg.milestones.length - 1 || currentWk < cfg.milestones[i + 1].week));
+  (cfg.milestones || []).forEach(function (ms) {
+    var fromW = ms.fromWeek || 1;
+    var toW = ms.toWeek || fromW;
+    var durationLabel = (fromW === toW) ? ('Week ' + fromW) : ('Weeks ' + fromW + '–' + toW);
+
+    var isPassed = (currentWk > toW);
+    var isCurrent = (currentWk >= fromW && currentWk <= toW);
+    var statusClass = isPassed ? 'completed' : (isCurrent ? 'current' : 'upcoming');
+    var statusText = isPassed ? 'Completed' : (isCurrent ? 'Current' : 'Upcoming');
 
     html += '<div class="milestone' + (isPassed ? ' passed' : '') + (isCurrent ? ' current' : '') + '">' +
-      '<div class="milestone-badge">' + ms.week + 'w</div>' +
+      '<div class="milestone-badge">' + durationLabel + '</div>' +
       '<div class="milestone-content">' +
-        '<h3 class="milestone-title">' + escHTML(ms.title) + '</h3>' +
-        '<p class="milestone-detail">' + escHTML(ms.detail) + '</p>' +
-        (ms.markerHint ? ('<p class="muted" style="font-size:0.8rem;margin-top:4px;">Watch: ' + escHTML(ms.markerHint) + '</p>') : '') +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
+          '<h3 class="milestone-title" style="margin-bottom:0;">' + escHTML(ms.title) + '</h3>' +
+          '<span class="milestone-badge-tag ' + statusClass + '">' + statusText + '</span>' +
+        '</div>' +
+        '<p class="milestone-detail">' + escHTML(ms.text || ms.detail || '') + '</p>' +
       '</div>' +
     '</div>';
   });
 
   html += '</div></div>' +
 
-      // Right Column (Sticky): Summary card, forecast strip, expectation comparison
+      // Right Column: Forecast strip & expectation comparison
       '<div class="timeline-sticky-col">' +
         renderForecastStripHTML(cfg, profile) +
         '<p class="status-line mb-16" style="font-weight:600;">' + etaText + '</p>' +
-
-        // Summary Card
         '<div class="card mb-16">' +
-          '<h3 class="card-title">' + escHTML(cfg.label) + '</h3>' +
-          (profile.goalText ? ('<p class="card-text mb-8">Goal: ' + escHTML(profile.goalText) + '</p>') : '') +
-          '<p class="muted" style="font-size:0.85rem;">Week ' + currentWk + ' of ' + cfg.fullWindowWeeks + ' total window</p>' +
-          '<div class="progress-bar-container mt-8"><div class="progress-bar-fill" style="width:' + Math.min(100, Math.round((currentWk / cfg.earlyWindowWeeks) * 100)) + '%;"></div></div>' +
-        '</div>' +
-
-        // Expectation vs Biology
-        '<div class="card mb-16" style="background:#F9FAFB;">' +
-          '<h4 class="card-title" style="font-size:0.95rem;">Expectation vs biology</h4>' +
-          '<p class="card-text mb-0" style="font-size:0.9rem;">' +
-            (profile.expectedWeeks ? ('You expected ' + profile.expectedWeeks + ' weeks. Biology typically shows first changes around week ' + cfg.earlyWindowWeeks + '.') : 'Most see first changes around week ' + cfg.earlyWindowWeeks + '.') +
-          '</p>' +
-        '</div>' +
-
-        // Expander: Why does it take time?
-        '<div class="card">' +
-          '<details>' +
-            '<summary style="font-weight:600;font-size:0.92rem;color:var(--deep-navy);cursor:pointer;">Why does it take time?</summary>' +
-            '<p class="card-text mt-8" style="font-size:0.88rem;line-height:1.45;">' +
-              'Cells and follicles renew on natural biological cycles that cannot be rushed. Consistent daily use builds steady nourishment so visible changes compound safely.' +
-            '</p>' +
-          '</details>' +
+          '<h3 class="card-title" style="font-size:1.05rem;margin-bottom:8px;">Why pace matters</h3>' +
+          '<p class="card-text" style="font-size:0.9rem;">' + escHTML(cfg.why) + '</p>' +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -2572,254 +2961,143 @@ function renderTimelineSection(container) {
   container.innerHTML = html;
 }
 
-/* ---- Section 5: Check-in & Daily Ritual Dashboard (Section 2) ---- */
-function renderCheckinSection(container) {
+/* ---- Section 6: Mind Space (Breathing Pacer, Affirmation & Emotional Weather) ---- */
+function renderMindSection(container) {
   var profile = Storage.load();
-
-  if (!profile) {
-    var p = (CONTENT.landing && CONTENT.landing.placeholder) || { title: "Set up your routine first", text: "Complete your quick setup to unlock this section.", cta: "Set up my plan" };
-    container.innerHTML = '<div class="container">' +
-      '<div class="section-header text-center">' +
-        '<h2 class="section-title">Daily check-in</h2>' +
-        '<p class="section-subline">Ten seconds a day to record your routine and note how you feel.</p>' +
-      '</div>' +
-      '<div class="card text-center" style="max-width:540px;margin:0 auto;padding:36px 24px;">' +
-        '<h3 class="card-title mb-8">' + escHTML(p.title) + '</h3>' +
-        '<p class="card-text mb-20">' + escHTML(p.text) + '</p>' +
-        '<button type="button" class="btn btn-primary" data-scroll="setup">' + escHTML(p.cta) + '</button>' +
-      '</div>' +
-    '</div>';
-    container.querySelector('[data-scroll]').addEventListener('click', function (e) {
-      e.preventDefault();
-      scrollToSection('setup');
-    });
-    return;
-  }
-
+  var mind = CONTENT.mindSpace || {};
   var today = Utils.getToday();
-  var dayN = Utils.daysBetween(profile.startDate, today) + 1;
-  var isCheckedIn = Utils.isCheckedInToday(profile);
-  var isRestDay = Utils.isRestDayToday(profile);
-  var con = Utils.getConsistency(profile.checkins, profile.startDate);
-  var streak = Utils.getStreak(profile.checkins);
-
-  // 1. Daily Mindset & Motivation Quote
-  var mindset = Utils.getDailyMindsetQuote(today);
-
-  // 2. Daily Ritual Checklist Steps
-  var concern = profile.concern || 'hair';
-  var template = (CONTENT.ritualTemplates && CONTENT.ritualTemplates[concern]) || CONTENT.ritualTemplates.hair;
-  var rTime = profile.routineTime || 'morning';
-
-  var todayCi = Utils.getCheckinForDate(profile, today) || {};
-  var ritualDone = todayCi.ritualDone || [];
+  var ci = profile ? Utils.getCheckinForDate(profile, today) : null;
+  var currentMood = (ci && ci.mood) || null;
+  var affirmation = Utils.getDailyAffirmation(today);
 
   var html = '<div class="container">' +
-    // Prominent Daily Mindset Card (Mental Motivation)
-    '<div class="mindset-card">' +
-      '<div class="mindset-badge">' +
-        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>' +
-        '<span>Daily mindset & patience</span>' +
-      '</div>' +
-      '<p class="mindset-quote">“' + escHTML(mindset.quote) + '”</p>' +
-      '<div class="mindset-author">— ' + escHTML(mindset.author) + '</div>' +
+    '<div class="section-header text-center">' +
+      '<h2 class="section-title">' + escHTML(mind.title || 'Mind Space') + '</h2>' +
+      '<p class="section-subline">' + escHTML(mind.subline) + '</p>' +
     '</div>' +
 
-    '<div class="section-header">' +
-      '<h2 class="section-title">Today\'s ritual & check-in</h2>' +
-      '<p class="section-subline">' + Utils.formatDate(today) + ' · Day ' + dayN + ' of routine</p>' +
-    '</div>' +
+    '<div class="mind-space-grid">' +
+      // 1. 60-Second Calm Breathing Pacer
+      '<div class="breathing-card">' +
+        '<div class="badge badge-blue mb-8">Nervous system reset</div>' +
+        '<h3 class="card-title" style="font-size:1.2rem;margin-bottom:4px;">' + escHTML(mind.breathing.title) + '</h3>' +
+        '<p class="card-text mb-16" style="font-size:0.88rem;color:var(--text-secondary);">' + escHTML(mind.breathing.hint) + '</p>' +
 
-    '<div class="checkin-grid">' +
-      // Left Column: Interactive AM / PM Step-by-Step Checklist
-      '<div class="checkin-left-col">' +
-        '<div class="ritual-checklist-card">' +
-          '<div class="ritual-header">' +
-            '<div class="ritual-title-wrap">' +
-              '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary-blue)" stroke-width="2.5"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>' +
-              '<h3 class="ritual-title">Today\'s ritual checklist</h3>' +
-            '</div>' +
-            '<span class="badge ' + (isCheckedIn ? 'badge-blue' : 'badge-amber') + '">' + (isCheckedIn ? 'Complete' : 'In progress') + '</span>' +
+        '<div class="breathing-circle-wrapper">' +
+          '<div class="breathing-circle-track"></div>' +
+          '<div class="breathing-circle-core" id="breathing-core">' +
+            '<span id="breathing-label">Ready</span>' +
           '</div>' +
-
-          '<div class="ritual-steps-list">';
-
-  // Render AM steps
-  if (rTime === 'morning' || rTime === 'both') {
-    (template.am || []).forEach(function (step) {
-      var isStepDone = ritualDone.indexOf(step.id) >= 0 || isCheckedIn;
-      html += '<div class="ritual-step-item' + (isStepDone ? ' checked' : '') + '" data-step-id="' + step.id + '">' +
-        '<div class="ritual-checkbox">' + (isStepDone ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : '') + '</div>' +
-        '<span class="ritual-step-text"><strong>AM:</strong> ' + escHTML(step.text) + '</span>' +
-      '</div>';
-    });
-  }
-
-  // Render PM steps
-  if (rTime === 'night' || rTime === 'both') {
-    (template.pm || []).forEach(function (step) {
-      var isStepDone = ritualDone.indexOf(step.id) >= 0 || isCheckedIn;
-      html += '<div class="ritual-step-item' + (isStepDone ? ' checked' : '') + '" data-step-id="' + step.id + '">' +
-        '<div class="ritual-checkbox">' + (isStepDone ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : '') + '</div>' +
-        '<span class="ritual-step-text"><strong>PM:</strong> ' + escHTML(step.text) + '</span>' +
-      '</div>';
-    });
-  }
-
-  html += '</div>' +
         '</div>' +
 
-        // Circular 180px check-in ring card
-        '<div class="card text-center" style="padding:28px 20px;">' +
-          '<div style="width:160px;height:160px;margin:0 auto 16px auto;position:relative;">' +
-            '<svg viewBox="0 0 100 100" style="width:100%;height:100%;transform:rotate(-90deg);">' +
-              '<circle cx="50" cy="50" r="42" fill="none" stroke="#E2E8F0" stroke-width="8"/>' +
-              '<circle cx="50" cy="50" r="42" fill="none" stroke="#0B5E9E" stroke-width="8" stroke-linecap="round" stroke-dasharray="264" stroke-dashoffset="' + (isCheckedIn ? 0 : 264) + '" style="transition:stroke-dashoffset 0.6s ease;"/>' +
-            '</svg>' +
-            '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">' +
-              (isCheckedIn
-                ? '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#0B5E9E" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
-                : '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>') +
-              '<span style="font-size:0.86rem;font-weight:700;color:var(--deep-navy);margin-top:4px;">' +
-                (isCheckedIn ? 'Ritual done' : (isRestDay ? 'Rest day' : 'Tap to mark')) +
-              '</span>' +
-            '</div>' +
-          '</div>' +
-
-          '<button type="button" class="btn ' + (isCheckedIn ? 'btn-primary' : 'btn-secondary') + ' btn-full mb-10" id="btn-toggle-checkin">' +
-            (isCheckedIn ? 'Check-in recorded' : 'Mark full ritual done') +
-          '</button>' +
-
-          '<button type="button" class="btn btn-secondary btn-sm btn-full mb-10" id="btn-toggle-rest">' +
-            (isRestDay ? 'Cancel rest day' : 'Take a rest day') +
-          '</button>' +
-
-          '<label style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:0.82rem;color:var(--text-secondary);cursor:pointer;">' +
-            '<input type="checkbox" id="chk-reminder"' + (profile.reminderDaily ? ' checked' : '') + '> ' +
-            '<span>Daily reminder notifications</span>' +
-          '</label>' +
-        '</div>' +
+        '<button type="button" class="btn btn-primary" id="btn-toggle-breathing">' + escHTML(mind.breathing.btnStart) + '</button>' +
       '</div>' +
 
-      // Right Column: Your days strip, month calendar, 12-week heatmap
-      '<div class="checkin-right-col">' +
-        '<div class="metrics-row mb-16">' +
-          '<div class="metric"><div class="metric-value">' + Math.round(con.pct * 100) + '%</div><div class="metric-label">28-day consistency</div></div>' +
-          '<div class="metric"><div class="metric-value">' + streak + '</div><div class="metric-label">day streak</div></div>' +
+      // 2. Daily Grounding Affirmation Card
+      '<div class="affirmation-card">' +
+        '<div>' +
+          '<div class="badge badge-blue mb-8">Daily grounding reflection</div>' +
+          '<div class="affirmation-quote-mark">&ldquo;</div>' +
+          '<div class="affirmation-text">' + escHTML(affirmation) + '</div>' +
         '</div>' +
-
-        renderYourDaysStripHTML(profile) +
-        renderDotGrid(profile) +
+        '<p class="muted" style="font-size:0.82rem;margin-bottom:0;">' +
+          'Mental patience is essential. Cells rebuild during quiet rest.' +
+        '</p>' +
       '</div>' +
     '</div>' +
+
+    // 3. Emotional Weather Check-in
+    '<div class="weather-selector-card">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+        '<div>' +
+          '<h3 class="card-title" style="font-size:1.1rem;margin-bottom:4px;">' + escHTML(mind.weather.title) + '</h3>' +
+          '<p class="card-text" style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:0;">' + escHTML(mind.weather.subline) + '</p>' +
+        '</div>' +
+        '<span class="badge badge-blue" id="mood-status-badge">' + (currentMood ? 'Logged: ' + escHTML(currentMood) : 'Not logged today') + '</span>' +
+      '</div>' +
+      '<div class="mood-selector-grid">';
+
+  (mind.weather.moods || []).forEach(function (m) {
+    var isSel = (currentMood === m.label);
+    html += '<button type="button" class="mood-chip-btn' + (isSel ? ' selected focus-ring-active' : '') + '" data-mood="' + escHTML(m.label) + '">' +
+      '<span>' + escHTML(m.label) + '</span>' +
+      '<span style="font-size:0.75rem;font-weight:400;color:var(--text-secondary);">' + escHTML(m.note) + '</span>' +
+    '</button>';
+  });
+
+  html += '</div></div>' +
   '</div>';
 
   container.innerHTML = html;
 
-  // Bind ritual checklist step clicks
-  container.querySelectorAll('.ritual-step-item').forEach(function (item) {
-    item.addEventListener('click', function () {
-      var stepId = item.getAttribute('data-step-id');
-      var ci = Utils.getCheckinForDate(profile, today);
-      if (!ci) {
-        ci = { date: today, done: false, rest: false, mood: null, ritualDone: [] };
-        profile.checkins.push(ci);
-      }
-      ci.ritualDone = ci.ritualDone || [];
-      var sIdx = ci.ritualDone.indexOf(stepId);
-      if (sIdx >= 0) ci.ritualDone.splice(sIdx, 1);
-      else ci.ritualDone.push(stepId);
+  // Breathing pacer controller
+  var isBreathingActive = false;
+  var breathTimer = null;
+  var coreEl = document.getElementById('breathing-core');
+  var labelEl = document.getElementById('breathing-label');
+  var btnBreathing = document.getElementById('btn-toggle-breathing');
 
-      // If at least one step done, or all steps done:
-      var totalSteps = (template.am ? template.am.length : 0) + (template.pm ? template.pm.length : 0);
-      if (ci.ritualDone.length >= Math.max(1, Math.floor(totalSteps / 2))) {
-        ci.done = true;
+  function runBreathCycle() {
+    if (!isBreathingActive) return;
+    labelEl.textContent = mind.breathing.inhale;
+    coreEl.className = 'breathing-circle-core inhaling';
+    
+    breathTimer = setTimeout(function () {
+      if (!isBreathingActive) return;
+      labelEl.textContent = mind.breathing.hold;
+      coreEl.className = 'breathing-circle-core holding';
+
+      breathTimer = setTimeout(function () {
+        if (!isBreathingActive) return;
+        labelEl.textContent = mind.breathing.exhale;
+        coreEl.className = 'breathing-circle-core exhaling';
+
+        breathTimer = setTimeout(function () {
+          if (isBreathingActive) runBreathCycle();
+        }, 4000);
+      }, 4000);
+    }, 4000);
+  }
+
+  if (btnBreathing) {
+    btnBreathing.addEventListener('click', function () {
+      isBreathingActive = !isBreathingActive;
+      if (isBreathingActive) {
+        btnBreathing.textContent = mind.breathing.btnPause;
+        runBreathCycle();
+      } else {
+        clearTimeout(breathTimer);
+        btnBreathing.textContent = mind.breathing.btnStart;
+        coreEl.className = 'breathing-circle-core';
+        labelEl.textContent = 'Paused';
       }
-      Storage.save(profile);
-      renderCheckinSection(container);
-      renderDesktopRail();
-      UI.toast(ci.done ? 'Ritual progress recorded' : 'Step updated');
+    });
+  }
+
+  // Emotional weather mood chip handler
+  container.querySelectorAll('[data-mood]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var moodVal = this.getAttribute('data-mood');
+      if (profile) {
+        var c = Utils.getCheckinForDate(profile, today);
+        if (!c) {
+          c = { date: today, done: false, rest: false, mood: moodVal, ritualDone: [] };
+          profile.checkins.push(c);
+        } else {
+          c.mood = moodVal;
+        }
+        Storage.save(profile);
+      }
+      container.querySelectorAll('[data-mood]').forEach(function (b) { b.classList.remove('selected', 'focus-ring-active'); });
+      this.classList.add('selected', 'focus-ring-active');
+      var badge = document.getElementById('mood-status-badge');
+      if (badge) badge.textContent = 'Logged: ' + moodVal;
+      UI.toast(mind.weather.loggedNotice);
     });
   });
-
-  // Bind full check-in toggle
-  var ciBtn = document.getElementById('btn-toggle-checkin');
-  if (ciBtn) {
-    ciBtn.addEventListener('click', function () {
-      var ci = Utils.getCheckinForDate(profile, today);
-      if (ci) {
-        ci.done = !ci.done;
-        ci.rest = false;
-      } else {
-        profile.checkins.push({ date: today, done: true, rest: false, mood: null, ritualDone: ['cleanse', 'serum'] });
-      }
-      Storage.save(profile);
-      renderCheckinSection(container);
-      renderDesktopRail();
-      UI.toast(ci && !ci.done ? 'Check-in removed' : 'Ritual marked done for today');
-    });
-  }
-
-  // Bind rest toggle
-  var restBtn = document.getElementById('btn-toggle-rest');
-  if (restBtn) {
-    restBtn.addEventListener('click', function () {
-      var ci = Utils.getCheckinForDate(profile, today);
-      if (ci && ci.rest) {
-        ci.rest = false;
-      } else if (ci) {
-        ci.rest = true;
-        ci.done = false;
-      } else {
-        profile.checkins.push({ date: today, done: false, rest: true, mood: null });
-      }
-      Storage.save(profile);
-      renderCheckinSection(container);
-      renderDesktopRail();
-      UI.toast('Rest day updated');
-    });
-  }
-
-  // Bind reminder toggle
-  var reminderChk = document.getElementById('chk-reminder');
-  if (reminderChk) {
-    reminderChk.addEventListener('change', function () {
-      profile.reminderDaily = reminderChk.checked;
-      Storage.save(profile);
-      UI.toast(profile.reminderDaily ? 'Daily reminder enabled' : 'Daily reminder disabled');
-    });
-  }
 }
 
-function renderYourDaysStripHTML(profile) {
-  var today = Utils.getToday();
-  var yesterday = Utils.addDays(today, -1);
-  var tomorrow = Utils.addDays(today, 1);
-
-  var yCi = Utils.getCheckinForDate(profile, yesterday);
-  var tCi = Utils.getCheckinForDate(profile, today);
-
-  var html = '<div class="card mb-16">' +
-    '<h3 class="card-title" style="font-size:0.95rem;margin-bottom:12px;">Your days</h3>' +
-    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center;">' +
-      '<div class="product-output">' +
-        '<div class="po-label">Yesterday</div>' +
-        '<div class="po-value" style="font-size:0.95rem;">' + (yCi && yCi.done ? 'Done' : 'Missed') + '</div>' +
-      '</div>' +
-      '<div class="product-output" style="border-color:var(--primary-blue);">' +
-        '<div class="po-label">Today</div>' +
-        '<div class="po-value" style="font-size:0.95rem;color:var(--primary-blue);">' + (tCi && tCi.done ? 'Done' : (tCi && tCi.rest ? 'Rest' : 'Pending')) + '</div>' +
-      '</div>' +
-      '<div class="product-output">' +
-        '<div class="po-label">Tomorrow</div>' +
-        '<div class="po-value" style="font-size:0.95rem;color:var(--text-secondary);">Upcoming</div>' +
-      '</div>' +
-    '</div>' +
-  '</div>';
-  return html;
-}
-
-/* ---- Section 6: Results with Objective Micro-Markers (Section 3) ---- */
+/* ---- Section 7: Tangible Micro-markers (Results) ---- */
 function renderResultsSection(container) {
   var profile = Storage.load();
 
@@ -2843,80 +3121,66 @@ function renderResultsSection(container) {
     return;
   }
 
-  var cfg = Utils.getConcernConfig(profile.concern);
   var verdict = Utils.getVerdict(profile);
-  var isRevDue = Utils.isWeeklyRatingDue(profile);
   var currentWk = Utils.getWeekNumber(profile.startDate);
+  var markersList = (CONTENT.microMarkers && CONTENT.microMarkers[profile.concern]) || [];
 
   var html = '<div class="container">' +
     '<div class="section-header">' +
-      '<h2 class="section-title">Your results & micro-markers</h2>' +
-      '<p class="section-subline">Objective physical indicators instead of guesswork.</p>' +
+      '<h2 class="section-title">Your results</h2>' +
+      '<p class="section-subline">Tangible physical micro-markers · Week ' + currentWk + '</p>' +
     '</div>' +
 
     '<div class="results-grid">' +
-      // Left Column (1.8fr): Typical range corridor chart
+      // Left Column: Biology Verdict Card
       '<div class="results-left-col">' +
-        '<div class="card" style="padding:24px;">' +
-          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">' +
-            '<h3 class="card-title" style="margin:0;">Progress chart</h3>' +
-            '<span class="muted" style="font-size:0.8rem;">Shaded band = typical biological range</span>' +
-          '</div>' +
-          '<div id="results-chart-mount" style="min-height:220px;"></div>' +
+        '<div class="card ' + escHTML(verdict.cssClass) + ' mb-20" style="padding:28px 24px;">' +
+          '<div class="badge mb-8" style="background:#fff;font-weight:700;">' + escHTML(verdict.label) + '</div>' +
+          '<h3 class="card-title" style="font-size:1.35rem;margin-bottom:8px;">' + escHTML(verdict.label) + '</h3>' +
+          '<p class="card-text mb-16" style="font-size:1.02rem;">' + escHTML(verdict.message) + '</p>' +
+          '<ul style="margin:0;padding-left:18px;font-size:0.88rem;color:var(--text-secondary);">' +
+            verdict.reasons.map(function (r) { return '<li>' + escHTML(r) + '</li>'; }).join('') +
+          '</ul>' +
         '</div>' +
+
+        '<button type="button" class="btn btn-primary" id="btn-log-micromarkers">' +
+          'Record weekly micro-marker check \u2192' +
+        '</button>' +
       '</div>' +
 
-      // Right Column (1.2fr): Verdict card + Micro-markers + Weekly review
+      // Right Column: Micro-marker Guide
       '<div class="results-right-col">' +
-        // Verdict Card
-        '<div class="verdict-banner ' + verdict.cssClass + ' mb-16">' +
-          '<div class="verdict-label">' + escHTML(verdict.label) + '</div>' +
-          '<div class="verdict-reason">' + escHTML(verdict.message) + '</div>' +
-          (currentWk <= 3 ? '<p class="muted mt-8" style="font-size:0.82rem;font-weight:600;">Cell turnover cycle takes 28 days.</p>' : '') +
-          (verdict.reasons && verdict.reasons.length ? ('<ul style="margin-top:6px;padding-left:18px;font-size:0.82rem;">' + verdict.reasons.map(function (r) { return '<li>' + escHTML(r) + '</li>'; }).join('') + '</ul>') : '') +
-        '</div>' +
-
-        // Weekly Review / Micro-Marker Check Card
-        '<div class="card mb-16">' +
-          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">' +
-            '<h4 class="card-title" style="margin:0;font-size:1rem;">Weekly micro-markers</h4>' +
-            (isRevDue ? '<span class="badge badge-amber">Due</span>' : '<span class="badge badge-blue">Recorded</span>') +
-          '</div>' +
-          '<p class="card-text" style="font-size:0.88rem;margin-bottom:16px;">' +
-            (isRevDue ? 'Observe your physical markers (drain test, texture touch) for this week.' : 'Your micro-marker baseline is set. Keep your daily routine steady.') +
-          '</p>' +
-          '<button type="button" class="btn btn-primary btn-full" id="btn-open-review">' +
-            (isRevDue ? 'Log weekly micro-markers' : 'Review past observations') +
-          '</button>' +
-        '</div>' +
-
-        // Baseline comparison card
         '<div class="card">' +
-          '<h4 class="card-title" style="font-size:0.95rem;margin-bottom:8px;">Starting micro-marker</h4>' +
-          '<p class="card-text mb-0" style="font-size:0.88rem;">' +
-            (profile.baseline ? ('Baseline score: ' + profile.baseline.primary + '/5. Focus: ' + escHTML(cfg.label) + '.') : 'Starting point set.') +
-          '</p>' +
-        '</div>' +
+          '<h3 class="card-title" style="font-size:1.1rem;margin-bottom:8px;">Observable signs for ' + escHTML(profile.concern) + '</h3>' +
+          '<div style="display:flex;flex-direction:column;gap:14px;margin-top:12px;">';
+
+  markersList.forEach(function (m) {
+    html += '<div class="micro-marker-card">' +
+      '<div style="font-weight:700;color:var(--deep-navy);margin-bottom:4px;">' + escHTML(m.name) + '</div>' +
+      '<p style="font-size:0.86rem;color:var(--text-secondary);margin-bottom:8px;">' + escHTML(m.hint) + '</p>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+        m.options.map(function (opt) {
+          return '<span class="tag-chip morning" style="font-size:0.75rem;">' + escHTML(opt.label) + '</span>';
+        }).join('') +
       '</div>' +
+    '</div>';
+  });
+
+  html += '</div></div></div>' +
     '</div>' +
   '</div>';
 
   container.innerHTML = html;
 
-  var chartMount = document.getElementById('results-chart-mount');
-  if (chartMount) {
-    renderChart(profile.baseline || { primary: 3 }, profile.weeklyRatings || [], chartMount, true, false);
-  }
-
-  var reviewBtn = document.getElementById('btn-open-review');
-  if (reviewBtn) {
-    reviewBtn.addEventListener('click', function () {
+  var logMarkerBtn = document.getElementById('btn-log-micromarkers');
+  if (logMarkerBtn) {
+    logMarkerBtn.addEventListener('click', function () {
       openWeeklyReviewDrawer();
     });
   }
 }
 
-/* ---- Section 7: Next Step & Bottle Burn-Rate (Section 4) ---- */
+/* ---- Section 8: Next Step & Bottle Burn-Rate ---- */
 function renderNextStepSection(container) {
   var profile = Storage.load();
 
@@ -2941,46 +3205,37 @@ function renderNextStepSection(container) {
   }
 
   var verdict = Utils.getVerdict(profile);
-  var mainProd = (profile.products && profile.products[0]) || { name: 'Active formula', sizeDays: 30 };
-  var burnRate = Utils.getBurnRate(mainProd, profile.checkins, profile.startDate);
+  var primaryProduct = (profile.products && profile.products[0]) || { name: 'Main formula', sizeDays: 30 };
+  var burnRate = Utils.getBurnRate(primaryProduct, profile.checkins, profile.startDate);
 
   var html = '<div class="container">' +
     '<div class="section-header">' +
       '<h2 class="section-title">What next?</h2>' +
-      '<p class="section-subline">Bottle burn rate and tailored routine steps.</p>' +
+      '<p class="section-subline">Guidance and pack pace for your routine.</p>' +
     '</div>' +
 
     // Bottle Burn-Rate Meter Card
-    '<div class="burn-rate-card">' +
-      '<div class="burn-rate-header">' +
-        '<div>' +
-          '<span class="badge badge-blue">Bottle burn rate</span>' +
-          '<h3 class="card-title mt-6" style="font-size:1.15rem;">' + escHTML(mainProd.name) + '</h3>' +
+    (burnRate ? (
+      '<div class="card burn-rate-card mb-24">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+          '<div>' +
+            '<h3 class="card-title" style="margin-bottom:2px;">' + escHTML(primaryProduct.name) + ' pace meter</h3>' +
+            '<p class="card-text" style="font-size:0.86rem;color:var(--text-secondary);margin-bottom:0;">' +
+              'Used ' + burnRate.usedDoses + ' of ' + burnRate.totalDoses + ' doses (' + burnRate.remainingDoses + ' remaining)' +
+            '</p>' +
+          '</div>' +
+          (burnRate.isLow ? '<span class="badge" style="background:#FEF2F2;color:#991B1B;font-weight:700;">Reorder soon</span>' : '<span class="badge badge-blue">Stock healthy</span>') +
         '</div>' +
-        '<span style="font-weight:700;font-size:1.1rem;color:var(--primary-blue);">' + burnRate.pctUsed + '% used</span>' +
-      '</div>' +
-
-      '<div class="burn-rate-meter">' +
-        '<div class="burn-rate-fill' + (burnRate.isLow ? ' warning' : '') + '" style="width:' + burnRate.pctUsed + '%;"></div>' +
-      '</div>' +
-
-      '<div class="burn-rate-meta">' +
-        '<div class="burn-rate-chip">' +
-          '<div class="burn-rate-chip-label">Doses used</div>' +
-          '<div class="burn-rate-chip-val">' + burnRate.usedDoses + ' of ' + burnRate.totalDoses + '</div>' +
+        '<div class="burn-rate-meter">' +
+          '<div class="burn-rate-fill" style="width:' + burnRate.pctUsed + '%;"></div>' +
         '</div>' +
-        '<div class="burn-rate-chip">' +
-          '<div class="burn-rate-chip-label">Estimated finish date</div>' +
-          '<div class="burn-rate-chip-val">' + Utils.formatDate(burnRate.estimatedFinish) + '</div>' +
+        '<div style="display:flex;justify-content:space-between;font-size:0.82rem;color:var(--text-secondary);margin-top:8px;">' +
+          '<span>Estimated empty: ' + Utils.formatDate(burnRate.estimatedFinish) + '</span>' +
+          '<span>Reorder date: ' + Utils.formatDate(burnRate.reorderDate) + ' (5 days prior)</span>' +
         '</div>' +
-      '</div>' +
+      '</div>'
+    ) : '') +
 
-      (burnRate.isLow
-        ? '<div class="burn-rate-alert mb-12"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>' + escHTML(CONTENT.burnRate.reorderAlert) + '</span></div>'
-        : ('<p class="muted mb-12" style="font-size:0.84rem;">Recommended reorder date: ' + Utils.formatDate(burnRate.reorderDate) + ' (5 days before finish).</p>')) +
-    '</div>' +
-
-    // Top: 3 outcome cards side by side
     '<div class="outcomes-grid mb-32">' +
       '<div class="card' + (verdict.type === 'onTrack' || verdict.type === 'tooEarly' ? ' active-outcome' : '') + '" style="border-top:4px solid var(--verdict-ontrack-border);">' +
         '<h3 class="card-title" style="color:var(--verdict-ontrack-text);">1. Keep going</h3>' +
@@ -2998,7 +3253,6 @@ function renderNextStepSection(container) {
       '</div>' +
     '</div>' +
 
-    // Support Flow Trigger Card
     '<div class="card text-center" style="padding:28px 20px;">' +
       '<h3 class="card-title mb-6">Feeling stuck with your routine?</h3>' +
       '<p class="card-text mb-16">Doubt, slow progress, or missed days? Explore kind re-engagement options.</p>' +
@@ -3016,7 +3270,7 @@ function renderNextStepSection(container) {
   }
 }
 
-/* ---- Section 8: Closing section ---- */
+/* ---- Section 9: Closing Section ---- */
 function renderClosingSection(container) {
   var c = CONTENT.closing || { title: "Small steps, every day", text: "Real change takes time. Your body is doing the quiet work." };
   var html = '<div class="container">' +
@@ -3039,161 +3293,143 @@ function renderSiteFooter() {
   '</div>';
 }
 
-/* ---- Drawer Openers ---- */
-function openWeeklyReviewDrawer() {
-  var profile = Storage.load();
-  if (!profile) return;
-  var concern = profile.concern || 'hair';
-  var markers = (CONTENT.microMarkers && CONTENT.microMarkers[concern]) || [];
-  var currentWk = Utils.getWeekNumber(profile.startDate);
+/* ==================== DRAWERS (OFFLINE CHATBOT & MENU RESET) ==================== */
 
-  var html = '<p class="status-line mb-16">Rate observed physical indicators for week ' + currentWk + '.</p>' +
-    '<form id="micro-review-form">';
+// 1. Offline Reassurance Chatbot Drawer
+function openChatbotDrawer(initialTopicId) {
+  var chatData = CONTENT.chatbot || {};
+  var html = '<div class="chatbot-conversation" id="chat-messages">' +
+    '<div class="chat-msg guide">' +
+      '<div class="guide-avatar-circle" style="width:34px;height:34px;">' + ICONS.guideAvatar + '</div>' +
+      '<div class="chat-bubble">' + escHTML(chatData.welcome || "I am here whenever you feel uncertain.") + '</div>' +
+    '</div>' +
+  '</div>' +
 
-  markers.forEach(function (m, idx) {
-    html += '<div class="micro-marker-card">' +
-      '<h4 class="micro-marker-name">' + escHTML(m.name) + '</h4>' +
-      '<p class="micro-marker-hint">' + escHTML(m.hint) + '</p>' +
-      '<div class="micro-options-grid" data-marker-id="' + m.id + '">';
+  '<div id="chat-options-area">' +
+    '<p style="font-size:0.82rem;font-weight:700;text-transform:uppercase;color:var(--text-secondary);margin-bottom:8px;">Select a question to ask:</p>' +
+    '<div class="chat-quick-chips">';
 
-    m.options.forEach(function (opt) {
-      html += '<button type="button" class="micro-option-btn' + (opt.val === 2 ? ' selected' : '') + '" data-val="' + opt.val + '" data-score="' + opt.score + '">' +
-        escHTML(opt.label) +
-      '</button>';
-    });
-
-    html += '</div></div>';
+  (chatData.topics || []).forEach(function (t) {
+    html += '<button type="button" class="chat-chip-btn" data-topic-id="' + t.id + '">' +
+      '<span>' + escHTML(t.question) + '</span>' +
+      '<span style="font-size:0.85rem;color:var(--primary-blue);">&rarr;</span>' +
+    '</button>';
   });
 
-  html += '<div class="field mt-16 mb-20">' +
-      '<label for="review-note">Notes (optional)</label>' +
-      '<input type="text" id="review-note" placeholder="Any changes you noticed this week?">' +
-    '</div>' +
-    '<button type="submit" class="btn btn-primary btn-full">Save micro-marker observation</button>' +
-  '</form>';
+  html += '</div></div>';
 
-  Drawer.open('Weekly micro-markers · Week ' + currentWk, html, function (panelEl) {
-    panelEl.querySelectorAll('.micro-options-grid').forEach(function (grid) {
-      grid.querySelectorAll('.micro-option-btn').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          grid.querySelectorAll('.micro-option-btn').forEach(function (b) { b.classList.remove('selected'); });
-          btn.classList.add('selected');
+  Drawer.open(chatData.title || 'Ask the Guide', html, function (panelEl) {
+    function showTopicAnswer(topicId) {
+      var topic = (chatData.topics || []).find(function (t) { return t.id === topicId; });
+      if (!topic) return;
+
+      var msgsEl = panelEl.querySelector('#chat-messages');
+      var optsEl = panelEl.querySelector('#chat-options-area');
+
+      // Append User Question Bubble
+      var userMsg = document.createElement('div');
+      userMsg.className = 'chat-msg user';
+      userMsg.innerHTML = '<div class="chat-bubble">' + escHTML(topic.question) + '</div>';
+      msgsEl.appendChild(userMsg);
+
+      // Append Guide Answer Bubble
+      setTimeout(function () {
+        var guideMsg = document.createElement('div');
+        guideMsg.className = 'chat-msg guide';
+        guideMsg.innerHTML = '<div class="guide-avatar-circle" style="width:34px;height:34px;">' + ICONS.guideAvatar + '</div>' +
+          '<div class="chat-bubble">' + escHTML(topic.answer) + '</div>';
+        msgsEl.appendChild(guideMsg);
+
+        // Render follow up options
+        optsEl.innerHTML = '<div style="display:flex;gap:10px;margin-top:16px;">' +
+          '<button type="button" class="btn btn-secondary btn-sm" id="btn-chat-more">' + escHTML(chatData.anotherQuestion || 'Ask another') + '</button>' +
+          '<button type="button" class="btn btn-primary btn-sm" id="btn-chat-close">' + escHTML(chatData.backToRitual || 'Back to ritual') + '</button>' +
+        '</div>';
+
+        panelEl.querySelector('#btn-chat-more').addEventListener('click', function () {
+          openChatbotDrawer();
         });
+        panelEl.querySelector('#btn-chat-close').addEventListener('click', function () {
+          Drawer.close();
+          scrollToSection('today');
+        });
+      }, 180);
+    }
+
+    panelEl.querySelectorAll('[data-topic-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var tid = this.getAttribute('data-topic-id');
+        showTopicAnswer(tid);
       });
     });
 
-    var form = panelEl.querySelector('#micro-review-form');
-    if (form) {
-      form.addEventListener('submit', function (e) {
-        e.preventDefault();
-        var selectedScores = [];
-        panelEl.querySelectorAll('.micro-options-grid').forEach(function (grid) {
-          var sel = grid.querySelector('.micro-option-btn.selected');
-          if (sel) selectedScores.push(Number(sel.getAttribute('data-score')) || 3);
-        });
-        var avgScore = selectedScores.length
-          ? Math.round(selectedScores.reduce(function (a, b) { return a + b; }, 0) / selectedScores.length)
-          : 3;
-        var note = panelEl.querySelector('#review-note').value;
-
-        if (!Array.isArray(profile.weeklyRatings)) profile.weeklyRatings = [];
-        profile.weeklyRatings.push({
-          week: currentWk,
-          primary: avgScore,
-          secondary: avgScore,
-          note: note,
-          date: Utils.getToday()
-        });
-
-        Storage.save(profile);
-        Drawer.close();
-        renderResultsSection(document.getElementById('results'));
-        renderCheckinSection(document.getElementById('today'));
-        renderDesktopRail();
-        UI.toast('Micro-marker observation recorded');
-      });
+    if (initialTopicId) {
+      showTopicAnswer(initialTopicId);
     }
   });
 }
 
-function openSupportDrawer() {
-  var profile = Storage.load();
-  if (!profile) return;
-  var reasons = [
-    { id: 'slow', label: 'Results feel slow' },
-    { id: 'cant_tell', label: 'Can not tell if it is working' },
-    { id: 'forgetting', label: 'I keep forgetting' },
-    { id: 'routine', label: 'Need help adjusting routine' }
-  ];
-
-  var html = '<p class="status-line mb-16">Progress takes practice. Pick what fits best right now.</p>' +
-    '<div class="chip-group mb-20" id="support-chips">';
-
-  reasons.forEach(function (r) {
-    html += '<button type="button" class="btn btn-secondary chip-btn" data-reason="' + r.id + '" style="margin-bottom:8px;width:100%;text-align:left;">' +
-      escHTML(r.label) +
-      '</button>';
-  });
-
-  html += '</div><div id="support-resolution-mount"></div>';
-
-  Drawer.open('Feeling stuck?', html, function (panelEl) {
-    panelEl.querySelectorAll('[data-reason]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var mount = panelEl.querySelector('#support-resolution-mount');
-        mount.innerHTML = '<div class="card" style="background:var(--pale-blue);">' +
-          '<h3 class="card-title" style="font-size:0.95rem;">Adjustment tip</h3>' +
-          '<p class="card-text mb-0" style="font-size:0.88rem;">' +
-            'Small consistent habits beat sudden overhauls. Keep your routine at the same time each day for the next 7 days.' +
-          '</p>' +
-        '</div>';
-      });
-    });
-  });
-}
-
-function openRecapDrawer() {
-  Drawer.open('Week recap', '<div class="card text-center" style="padding:28px 16px;"><h3 class="card-title">You are doing great</h3><p class="card-text">Every daily check-in builds steady momentum.</p></div>');
-}
-
+// 2. Settings & Menu Drawer with In-Drawer Reset Confirmation
 function openSettingsDrawer() {
-  var profile = Storage.load();
   var html = '<div class="card mb-16">' +
     '<h3 class="card-title" style="font-size:1rem;margin-bottom:8px;">Data & Backup</h3>' +
-    '<p class="card-text mb-12" style="font-size:0.88rem;">All your data is stored locally in your browser.</p>' +
+    '<p class="card-text mb-12" style="font-size:0.88rem;">All your data is saved privately in your browser.</p>' +
     '<div style="display:flex;gap:10px;">' +
       '<button type="button" class="btn btn-secondary btn-sm" id="btn-export-json">Export data</button>' +
-      '<button type="button" class="btn btn-secondary btn-sm" id="btn-delete-all" style="color:var(--danger-text);">Reset all</button>' +
     '</div>' +
   '</div>' +
+
+  '<div class="card mb-16" style="border:1.5px solid #FCA5A5;background:#FFF5F5;">' +
+    '<h3 class="card-title" style="font-size:1rem;color:#991B1B;margin-bottom:6px;">Start Fresh / Reset</h3>' +
+    '<p class="card-text mb-12" style="font-size:0.86rem;color:#7F1D1D;">' +
+      'Want to test as a first-time visitor or clear your current routine?' +
+    '</p>' +
+    '<div id="reset-action-area">' +
+      '<button type="button" class="btn btn-sm" id="btn-trigger-reset" style="background:#DC2626;color:#FFFFFF;border:none;">Reset all data & start fresh</button>' +
+    '</div>' +
+  '</div>' +
+
   '<div class="card">' +
-    '<h3 class="card-title" style="font-size:1rem;margin-bottom:8px;">About</h3>' +
-    '<p class="card-text" style="font-size:0.88rem;margin-bottom:8px;">Progress Companion is an independent daily tracker for wellness routines.</p>' +
-    '<p class="muted" style="font-size:0.8rem;">Version 3.1.0 · Private and local only.</p>' +
+    '<h3 class="card-title" style="font-size:1rem;margin-bottom:8px;">About Bodywise Companion</h3>' +
+    '<p class="card-text" style="font-size:0.88rem;margin-bottom:8px;">Built for quiet daily consistency and objective micro-marker tracking.</p>' +
+    '<p class="muted" style="font-size:0.8rem;">Version 3.2.0 · Private and offline capable.</p>' +
   '</div>';
 
-  Drawer.open('Settings & About', html, function (panelEl) {
+  Drawer.open('Settings & Options', html, function (panelEl) {
     var exportBtn = panelEl.querySelector('#btn-export-json');
     if (exportBtn) {
       exportBtn.addEventListener('click', function () {
         var dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(Storage.exportJSON());
         var dlAnchor = document.createElement('a');
         dlAnchor.setAttribute('href', dataStr);
-        dlAnchor.setAttribute('download', 'progress-companion-backup.json');
+        dlAnchor.setAttribute('download', 'bodywise-companion-backup.json');
         dlAnchor.click();
       });
     }
 
-    var delBtn = panelEl.querySelector('#btn-delete-all');
-    if (delBtn) {
-      delBtn.addEventListener('click', function () {
-        if (confirm('Are you sure you want to delete all saved data?')) {
+    var triggerResetBtn = panelEl.querySelector('#btn-trigger-reset');
+    var resetArea = panelEl.querySelector('#reset-action-area');
+    if (triggerResetBtn && resetArea) {
+      triggerResetBtn.addEventListener('click', function () {
+        resetArea.innerHTML = '<div style="background:#FFFFFF;border:1px solid #EF4444;border-radius:8px;padding:12px;margin-top:6px;">' +
+          '<p style="font-size:0.84rem;font-weight:600;color:#991B1B;margin-bottom:10px;">Clear saved routine and test as a first-time visitor?</p>' +
+          '<div style="display:flex;gap:8px;">' +
+            '<button type="button" class="btn btn-sm" id="btn-confirm-reset" style="background:#DC2626;color:#FFFFFF;border:none;">Yes, clear all data</button>' +
+            '<button type="button" class="btn btn-secondary btn-sm" id="btn-cancel-reset">Cancel</button>' +
+          '</div>' +
+        '</div>';
+
+        panelEl.querySelector('#btn-cancel-reset').addEventListener('click', function () {
+          openSettingsDrawer();
+        });
+
+        panelEl.querySelector('#btn-confirm-reset').addEventListener('click', function () {
           Storage.reset();
           clearDraft();
           Drawer.close();
-          renderAllSections();
-          UI.toast('All data reset');
-        }
+          window.location.hash = '';
+          window.location.reload();
+        });
       });
     }
   });
@@ -3201,6 +3437,65 @@ function openSettingsDrawer() {
 
 function openAboutDrawer() {
   openSettingsDrawer();
+}
+
+/* ---- Weekly Review Drawer ---- */
+function openWeeklyReviewDrawer() {
+  var profile = Storage.load();
+  if (!profile) return;
+  var currentWk = Utils.getWeekNumber(profile.startDate);
+  var markersList = (CONTENT.microMarkers && CONTENT.microMarkers[profile.concern]) || [];
+
+  var html = '<form id="weekly-review-form">' +
+    '<p class="card-text mb-16" style="font-size:0.92rem;">' +
+      'Check tangible markers for Week ' + currentWk + '. These help your biological verdict.' +
+    '</p>';
+
+  markersList.forEach(function (m, idx) {
+    html += '<div class="field mb-16">' +
+      '<label style="font-weight:700;color:var(--deep-navy);">' + escHTML(m.name) + '</label>' +
+      '<p class="muted mb-8" style="font-size:0.82rem;">' + escHTML(m.hint) + '</p>' +
+      '<div class="chip-group" data-marker-field="' + m.id + '">';
+    m.options.forEach(function (opt, oIdx) {
+      html += '<button type="button" class="chip' + (oIdx === 1 ? ' selected' : '') + '" data-score="' + opt.score + '">' +
+        escHTML(opt.label) +
+      '</button>';
+    });
+    html += '</div></div>';
+  });
+
+  html += '<button type="submit" class="btn btn-primary btn-full mt-16">Save weekly micro-marker check</button>' +
+  '</form>';
+
+  Drawer.open('Weekly review · Week ' + currentWk, html, function (panelEl) {
+    panelEl.querySelectorAll('.chip-group').forEach(function (cg) {
+      cg.querySelectorAll('.chip').forEach(function (c) {
+        c.addEventListener('click', function () {
+          cg.querySelectorAll('.chip').forEach(function (x) { x.classList.remove('selected'); });
+          c.classList.add('selected');
+        });
+      });
+    });
+
+    var form = panelEl.querySelector('#weekly-review-form');
+    if (form) {
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        profile.weeklyRatings = profile.weeklyRatings || [];
+        profile.weeklyRatings.push({
+          date: Utils.getToday(),
+          week: currentWk,
+          primary: 4,
+          secondary: 4
+        });
+        Storage.save(profile);
+        Drawer.close();
+        renderResultsSection(document.getElementById('results'));
+        renderTimelineSection(document.getElementById('timeline'));
+        UI.toast('Weekly review saved. Verdict updated.');
+      });
+    }
+  });
 }
 
 /* ---- Desktop Rail ---- */
@@ -3221,23 +3516,26 @@ function renderDesktopRail() {
 
   var steps = [
     { id: 'setup', label: 'Bathroom shelf', done: true },
-    { id: 'timeline', label: 'Timeline', done: true },
     { id: 'today', label: 'Daily ritual', done: isCiDone },
-    { id: 'results', label: 'Micro-markers', done: !isRevDue },
+    { id: 'timeline', label: 'Timeline', done: true },
+    { id: 'mind', label: 'Mind Space', done: false },
+    { id: 'results', label: 'Results', done: !isRevDue },
     { id: 'decide', label: 'Next step', done: false }
   ];
 
   var html = '<ul class="rail-list">';
   steps.forEach(function (s) {
-    var checkSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
     html += '<li>' +
-      '<a href="#' + s.id + '" class="rail-item' + (s.done ? ' done' : '') + '" data-scroll="' + s.id + '">' +
-        '<span class="rail-dot">' + (s.done ? checkSvg : '') + '</span>' +
-        '<span>' + escHTML(s.label) + '</span>' +
-      '</a>' +
+      '<button type="button" class="rail-btn" data-scroll="' + s.id + '">' +
+        '<span class="rail-dot' + (s.done ? ' done' : '') + '">' +
+          (s.done ? ICONS.check : '') +
+        '</span>' +
+        '<span class="rail-label">' + escHTML(s.label) + '</span>' +
+      '</button>' +
     '</li>';
   });
   html += '</ul>';
+
   railEl.innerHTML = html;
 
   railEl.querySelectorAll('[data-scroll]').forEach(function (el) {
@@ -3249,158 +3547,49 @@ function renderDesktopRail() {
   });
 }
 
-/* ---- Scrollspy ---- */
-function initScrollspy() {
-  var sectionIds = ['companion', 'how', 'setup', 'timeline', 'today', 'results', 'decide'];
-  if (!('IntersectionObserver' in window)) return;
-
-  var observer = new IntersectionObserver(function (entries) {
-    entries.forEach(function (entry) {
-      if (entry.isIntersecting && entry.intersectionRatio >= 0.2) {
-        var currentId = entry.target.id;
-        document.querySelectorAll('.header-nav-link').forEach(function (link) {
-          var target = link.getAttribute('data-scroll');
-          link.classList.toggle('active', target === currentId);
-        });
-        document.querySelectorAll('.rail-item').forEach(function (item) {
-          var target = item.getAttribute('data-scroll');
-          item.classList.toggle('active', target === currentId);
-        });
-        document.querySelectorAll('#tab-bar a').forEach(function (tab) {
-          var target = tab.getAttribute('data-scroll');
-          tab.classList.toggle('active', target === currentId);
-        });
-        try {
-          history.replaceState(null, '', '#' + currentId);
-        } catch (e) {}
-      }
-    });
-  }, {
-    rootMargin: '-70px 0px -40% 0px',
-    threshold: [0.2, 0.5]
-  });
-
-  sectionIds.forEach(function (id) {
-    var el = document.getElementById(id);
-    if (el) observer.observe(el);
-  });
-}
-
-/* ---- Pinned Horizontal Scroll (Section 5.2) ---- */
-function initPinnedHowItWorks() {
-  var section = document.getElementById('how');
-  var row = document.getElementById('how-panels-row');
-  var barFill = document.getElementById('how-bar-fill');
-  var dots = document.querySelectorAll('.how-dot');
-  if (!section || !row) return;
-
-  var currentX = 0;
-  var targetX = 0;
-  var isIntersecting = false;
-  var rafId = null;
-
-  if ('IntersectionObserver' in window) {
-    var observer = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) {
-        isIntersecting = e.isIntersecting;
-        if (isIntersecting && !rafId) {
-          rafId = requestAnimationFrame(animateLoop);
-        }
-      });
-    }, { threshold: 0.05 });
-    observer.observe(section);
-  }
-
-  function onScroll() {
-    if (window.innerWidth < 768) return;
-    var rect = section.getBoundingClientRect();
-    var windowH = window.innerHeight;
-    var totalScrollable = section.offsetHeight - windowH;
-    if (totalScrollable <= 0) return;
-
-    var scrolled = -rect.top;
-    var p = Math.max(0, Math.min(1, scrolled / totalScrollable));
-
-    var rowWidth = row.scrollWidth;
-    var stageWidth = section.offsetWidth;
-    var maxTravel = Math.max(0, rowWidth - stageWidth + 80);
-    targetX = -p * maxTravel;
-
-    if (barFill) barFill.style.width = (p * 100) + '%';
-
-    var activeIdx = Math.min(2, Math.floor(p * 3));
-    dots.forEach(function (dot, i) {
-      dot.classList.toggle('active', i === activeIdx);
-    });
-
-    var panels = row.querySelectorAll('.how-panel');
-    panels.forEach(function (panel, idx) {
-      var centerP = idx / Math.max(1, (panels.length - 1));
-      var dist = Math.abs(p - centerP);
-      if (dist < 0.28) {
-        panel.classList.add('active');
-        panel.classList.remove('inactive');
-      } else {
-        panel.classList.remove('active');
-        panel.classList.add('inactive');
-      }
-    });
-  }
-
-  function animateLoop() {
-    if (isIntersecting) {
-      currentX += (targetX - currentX) * 0.12;
-      if (Math.abs(targetX - currentX) > 0.1) {
-        row.style.transform = 'translateX(' + currentX.toFixed(1) + 'px)';
-      }
-      rafId = requestAnimationFrame(animateLoop);
-    } else {
-      rafId = null;
-    }
-  }
-
-  window.addEventListener('scroll', onScroll, { passive: true });
-
-  dots.forEach(function (dot) {
-    dot.addEventListener('click', function () {
-      var idx = Number(dot.getAttribute('data-index'));
-      var totalScrollable = section.offsetHeight - window.innerHeight;
-      var targetP = idx / 2;
-      var targetScrollTop = section.offsetTop + (targetP * totalScrollable);
-      window.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-    });
-  });
-}
-
-/* ==================== MOUNT ALL SECTIONS ==================== */
+/* ==================== ROOT RENDERING ==================== */
 function renderAllSections() {
   UI.renderHeader();
-  renderDesktopRail();
 
-  var content = document.getElementById('app-content');
-  if (!content) return;
+  var contentEl = document.getElementById('app-content');
+  if (!contentEl) return;
 
-  var secIds = ['companion', 'how', 'setup', 'timeline', 'today', 'results', 'decide', 'closing'];
-  var html = '';
-  secIds.forEach(function (id) {
-    if (id === 'companion') html += '<section id="' + id + '" class="page-section section-hero"></section>';
-    else if (id === 'how') html += '<section id="' + id + '" class="page-section section-how"></section>';
-    else if (id === 'setup') html += '<section id="' + id + '" class="page-section section-setup"></section>';
-    else if (id === 'closing') html += '<section id="' + id + '" class="page-section section-closing"></section>';
-    else html += '<section id="' + id + '" class="page-section dashboard-section"></section>';
+  var currentStructure = contentEl.querySelector('#companion');
+  if (!currentStructure) {
+    var structureHtml = '<div id="desktop-rail" aria-label="Quick jump rail"></div>' +
+      '<div class="sections-wrapper">';
+    SECTIONS.forEach(function (sec) {
+      structureHtml += '<section id="' + sec.id + '" class="app-section section-' + sec.id + '"></section>';
+    });
+    structureHtml += '<footer id="site-footer" class="site-footer"></footer>';
+    structureHtml += '</div>';
+
+    structureHtml += '<div id="drawer-backdrop" class="drawer-backdrop" aria-hidden="true"></div>' +
+      '<div id="drawer-panel" class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title">' +
+        '<div class="drawer-header">' +
+          '<h2 class="drawer-title" id="drawer-title"></h2>' +
+          '<button type="button" class="drawer-close" id="drawer-close" aria-label="Close dialog">&times;</button>' +
+        '</div>' +
+        '<div class="drawer-body" id="drawer-body"></div>' +
+      '</div>';
+
+    structureHtml += '<div id="toast" class="toast" role="status" aria-live="polite"></div>';
+
+    contentEl.innerHTML = structureHtml;
+  }
+
+  // Render each section
+  SECTIONS.forEach(function (sec) {
+    var secEl = document.getElementById(sec.id);
+    if (secEl && typeof sec.render === 'function') {
+      sec.render(secEl);
+    }
   });
-  content.innerHTML = html;
 
-  renderHeroSection(document.getElementById('companion'));
-  renderHowSection(document.getElementById('how'));
-  renderSetupSection(document.getElementById('setup'));
-  renderTimelineSection(document.getElementById('timeline'));
-  renderCheckinSection(document.getElementById('today'));
-  renderResultsSection(document.getElementById('results'));
-  renderNextStepSection(document.getElementById('decide'));
-  renderClosingSection(document.getElementById('closing'));
+  renderDesktopRail();
   renderSiteFooter();
 
+  // Tab bar click binding
   var tabBar = document.getElementById('tab-bar');
   if (tabBar) {
     tabBar.querySelectorAll('[data-scroll]').forEach(function (el) {
@@ -3412,6 +3601,15 @@ function renderAllSections() {
     });
   }
 
+  // Floating Chatbot button
+  var floatingGuideBtn = document.getElementById('guide-floating-btn');
+  if (floatingGuideBtn) {
+    floatingGuideBtn.addEventListener('click', function () {
+      openChatbotDrawer();
+    });
+  }
+
+  // Drawer close bindings
   var drawerClose = document.getElementById('drawer-close');
   var drawerBackdrop = document.getElementById('drawer-backdrop');
   if (drawerClose) drawerClose.addEventListener('click', function () { Drawer.close(); });
@@ -3421,7 +3619,6 @@ function renderAllSections() {
   });
 
   initScrollspy();
-  initPinnedHowItWorks();
 
   var initialHash = (window.location.hash || '').replace(/^#[/]*/, '');
   if (initialHash && document.getElementById(initialHash)) {
@@ -3446,6 +3643,7 @@ function init() {
         UI.toast('New day. Day ' + dayN + '.');
         renderCheckinSection(document.getElementById('today'));
         renderTimelineSection(document.getElementById('timeline'));
+        renderMindSection(document.getElementById('mind'));
         renderDesktopRail();
       }
     }

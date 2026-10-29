@@ -22,37 +22,53 @@
     <header id="app-header" role="banner"></header>
     <main id="app-content" role="main"></main>
     <nav id="tab-bar" role="navigation" aria-label="Main navigation">
-      <a href="#/" data-tab="home" role="tab">
+      <a href="#companion" data-scroll="companion" class="active" role="tab">
         <svg class="tab-icon" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
         </svg>
-        <span>Journey</span>
+        <span>Overview</span>
       </a>
-      <a href="#/today" data-tab="today" role="tab">
+      <a href="#today" data-scroll="today" role="tab">
         <svg class="tab-icon" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
           <polyline points="22 4 12 14.01 9 11.01"/>
         </svg>
-        <span>Check-in</span>
+        <span>Daily Ritual</span>
       </a>
-      <a href="#/progress" data-tab="progress" role="tab">
+      <a href="#timeline" data-scroll="timeline" role="tab">
+        <svg class="tab-icon" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </svg>
+        <span>Timeline</span>
+      </a>
+      <a href="#mind" data-scroll="mind" role="tab">
+        <svg class="tab-icon" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/>
+          <path d="M12 7v5l3 3"/>
+        </svg>
+        <span>Mind Space</span>
+      </a>
+      <a href="#results" data-scroll="results" role="tab">
         <svg class="tab-icon" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 3v18h18"/>
           <path d="m19 9-5 5-4-4-3 3"/>
         </svg>
         <span>Results</span>
       </a>
-      <a href="#/decide" data-tab="decide" role="tab">
-        <svg class="tab-icon" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/>
-          <polyline points="12 16 16 12 12 8"/>
-          <line x1="8" y1="12" x2="16" y2="12"/>
-        </svg>
-        <span>Next step</span>
-      </a>
     </nav>
   </div>
+  <button type="button" class="guide-floating-btn" id="guide-floating-btn" aria-label="Ask the Guide">
+    <span class="guide-floating-icon">
+      <svg width="14" height="14" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="24" cy="12" r="5"/>
+        <path d="M 12 25 C 16 18, 22 21, 24 27 C 26 21, 32 18, 36 25"/>
+        <path d="M 24 27 C 23 34, 25 39, 24 44"/>
+      </svg>
+    </span>
+    <span>Ask the Guide</span>
+  </button>
   <script src="content.js"></script>
   <script src="app.js"></script>
 </body>

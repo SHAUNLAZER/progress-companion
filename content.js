@@ -891,5 +891,100 @@ const CONTENT = {
     privacy: "Private. Saved only on your device."
   },
 
+
+  /* ---- The Living Guide Persona (Section 2) ---- */
+  guide: {
+    avatarTitle: "Your Bodywise Guide",
+    setupSpeech: {
+      step1: "Hi. What should I call you as we begin?",
+      step2: "What area of your wellness are we caring for?",
+      step3: "Let's see what is in your cabinet.\nCheck off the formulas you own.",
+      step4: "Do you prefer a morning ritual, evening, or both?"
+    },
+    greetings: {
+      morning: "Good morning, {name}.\nDay {streak} of care together.\nConsistency is quiet work.",
+      afternoon: "Good afternoon, {name}.\nTaking steady steps today.\nYour body is doing quiet renewal.",
+      evening: "Good evening, {name}.\nUnwind from your day.\nRest is part of the routine."
+    }
+  },
+
+  /* ---- Offline Reassurance Chatbot (Section 3) ---- */
+  chatbot: {
+    title: "Ask the Guide",
+    floatingBtn: "Ask the Guide",
+    welcome: "I am here whenever you feel uncertain.\nWhat is on your mind today?",
+    topics: [
+      {
+        id: "normal",
+        question: "Is this normal?",
+        chip: "Is this normal?",
+        answer: "Active formulas speed up renewal in weeks 1 to 3.\nThis can cause temporary shedding or minor purging.\nIf you feel itching or burning, pause the product."
+      },
+      {
+        id: "slow",
+        question: "Results feel slow",
+        chip: "Results feel slow",
+        answer: "Skin cells renew every 28 days.\nHair follicles take 60 to 90 days.\nInternal cellular change happens before surface signs appear."
+      },
+      {
+        id: "missed",
+        question: "I missed a few days",
+        chip: "I missed a few days",
+        answer: "Pauses are part of being human.\nNever double your dose tomorrow.\nYour past consistency is not erased by a break."
+      },
+      {
+        id: "tired",
+        question: "I am too tired tonight",
+        chip: "I am too tired tonight",
+        answer: "Deep sleep is when your cells rebuild.\nSplash your face with water and sleep.\nRest is an essential part of care."
+      },
+      {
+        id: "lift",
+        question: "Need a quick lift",
+        chip: "Need a quick lift",
+        answer: "Your routine is care for yourself, not a test.\nTake one slow breath.\nYou are doing well simply by caring today."
+      }
+    ],
+    anotherQuestion: "Ask another question",
+    backToRitual: "Back to daily ritual"
+  },
+
+  /* ---- Dedicated Mind Space (Section 4) ---- */
+  mindSpace: {
+    title: "Mind Space",
+    subline: "A quiet pause for mental rest and calm breathing.",
+    breathing: {
+      title: "60-second calm breathing pacer",
+      hint: "Slow breathing lowers stress and supports cellular recovery.",
+      inhale: "Breathe in slowly",
+      hold: "Hold gently",
+      exhale: "Breathe out completely",
+      btnStart: "Start breathing pacer",
+      btnPause: "Pause pacer",
+      cycleSeconds: 12
+    },
+    affirmations: [
+      "Progress is happening in quiet cellular cycles.",
+      "Missing one day does not undo your steady care.",
+      "Caring for yourself is a daily practice, not perfection.",
+      "Real change builds slowly beneath the surface.",
+      "Give your body the patience you give others.",
+      "Today's small ritual is an act of self-respect.",
+      "Rest and stillness are vital parts of wellness."
+    ],
+    weather: {
+      title: "Emotional weather check",
+      subline: "How is your mental energy feeling right now?",
+      moods: [
+        { id: "grounded", label: "Grounded", note: "Steady and centered today." },
+        { id: "calm", label: "Calm", note: "Peaceful and unhurried." },
+        { id: "tired", label: "Tired", note: "Low energy. Keep routines simple." },
+        { id: "rushed", label: "Rushed", note: "Busy day. Take one mindful breath." },
+        { id: "overwhelmed", label: "Overwhelmed", note: "Be gentle with yourself today." }
+      ],
+      loggedNotice: "Mental weather saved for today."
+    }
+  },
+
   version: "3.0.0"
 };

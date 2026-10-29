@@ -3907,3 +3907,492 @@ textarea {
   align-items: center;
   gap: 8px;
 }
+
+
+/* ============================================================
+   MASTER REFACTOR STYLES: GUIDE PERSONA, CHATBOT & MIND SPACE
+   ============================================================ */
+
+/* ---- Brand Logo & Header Navigation Hierarchy ---- */
+.header-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--deep-navy);
+  transition: opacity 0.2s ease;
+}
+.header-brand:hover {
+  opacity: 0.85;
+}
+.guide-avatar-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--pale-blue);
+  color: var(--primary-blue);
+  flex-shrink: 0;
+}
+.brand-name {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Header nav link active indicator */
+.header-nav-link {
+  position: relative;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  transition: color 0.2s ease, background 0.2s ease;
+}
+.header-nav-link:hover {
+  color: var(--deep-navy);
+  background: var(--surface-subtle);
+}
+.header-nav-link.active {
+  color: var(--primary-blue);
+  background: var(--pale-blue);
+  font-weight: 600;
+}
+
+/* ---- Fix How It Works: 3-column desktop grid & mobile snap ---- */
+@media (min-width: 1024px) {
+  .section-how {
+    height: auto !important;
+    padding: var(--section-pad) 0 !important;
+  }
+  .how-stage {
+    position: relative !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .how-panels-container {
+    width: 100% !important;
+    overflow: visible !important;
+    perspective: none !important;
+  }
+  .how-panels-row {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 28px !important;
+    transform: none !important;
+    width: 100% !important;
+  }
+  .how-panel {
+    width: 100% !important;
+    transform: none !important;
+    opacity: 1 !important;
+    filter: none !important;
+    box-shadow: var(--shadow-card) !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .section-how {
+    height: auto !important;
+  }
+  .how-stage {
+    position: relative !important;
+    height: auto !important;
+  }
+  .how-panels-container {
+    overflow-x: auto !important;
+    scroll-snap-type: x mandatory !important;
+    scroll-behavior: smooth !important;
+    justify-content: flex-start !important;
+    padding: 16px var(--gutter) !important;
+  }
+  .how-panels-row {
+    display: flex !important;
+    gap: 16px !important;
+    transform: none !important;
+  }
+  .how-panel {
+    flex: 0 0 85vw !important;
+    scroll-snap-align: center !important;
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+}
+
+/* ---- Living Guide Persona & Interactive Speech Bubble ---- */
+.guide-speech-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: linear-gradient(135deg, #F0F7FF 0%, #E8F2FC 100%);
+  border: 1.5px solid #BFDBFE;
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-card);
+  animation: guideFadeSlide 0.4s var(--ease-out);
+}
+@keyframes guideFadeSlide {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.guide-avatar-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  border: 1.5px solid #93C5FD;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-blue);
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(11, 94, 158, 0.12);
+}
+.guide-speech-body {
+  flex: 1;
+}
+.guide-speech-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--primary-blue);
+  margin-bottom: 4px;
+}
+.guide-speech-text {
+  font-size: 0.96rem;
+  font-weight: 600;
+  color: var(--deep-navy);
+  line-height: 1.4;
+  margin: 0;
+  white-space: pre-line;
+}
+
+/* Dynamic Circle Highlight around active element */
+.focus-ring-active {
+  position: relative;
+  outline: none;
+}
+.focus-ring-active::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 2px solid var(--primary-blue);
+  border-radius: inherit;
+  pointer-events: none;
+  animation: pulseRing 1.8s infinite cubic-bezier(0.4, 0, 0.6, 1);
+}
+@keyframes pulseRing {
+  0%, 100% { opacity: 0.9; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(1.02); }
+}
+
+/* Subtle entry animation for Daily Ritual */
+@keyframes fadeInEntry {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in-entry {
+  animation: fadeInEntry 0.5s var(--ease-out) forwards;
+}
+
+/* ---- Floating Offline Chatbot Button ---- */
+.guide-floating-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 100;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  background: var(--deep-navy);
+  color: #FFFFFF;
+  border: none;
+  border-radius: var(--radius-pill);
+  box-shadow: 0 4px 16px rgba(15, 45, 94, 0.28);
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out);
+}
+.guide-floating-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 22px rgba(15, 45, 94, 0.36);
+}
+.guide-floating-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Chatbot drawer layout */
+.chatbot-conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.chat-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 90%;
+}
+.chat-msg.guide {
+  align-self: flex-start;
+}
+.chat-msg.user {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+.chat-bubble {
+  padding: 14px 16px;
+  border-radius: 18px;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  white-space: pre-line;
+}
+.chat-msg.guide .chat-bubble {
+  background: #F1F5F9;
+  color: var(--deep-navy);
+  border-bottom-left-radius: 4px;
+}
+.chat-msg.user .chat-bubble {
+  background: var(--primary-blue);
+  color: #FFFFFF;
+  border-bottom-right-radius: 4px;
+}
+.chat-quick-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.chat-chip-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #FFFFFF;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--deep-navy);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.chat-chip-btn:hover {
+  border-color: var(--primary-blue);
+  background: var(--pale-blue);
+  color: var(--primary-blue);
+}
+
+/* ---- Dedicated Mind Space Section ---- */
+.section-mind {
+  padding: var(--section-pad) 0;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F5F9FD 100%);
+  border-top: 1px solid var(--border-light);
+}
+.mind-space-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 24px;
+}
+@media (max-width: 840px) {
+  .mind-space-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 60-Second Breathing Pacer */
+.breathing-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-card);
+  padding: 32px 24px;
+  text-align: center;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.breathing-circle-wrapper {
+  position: relative;
+  width: 180px;
+  height: 180px;
+  margin: 20px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.breathing-circle-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 4px solid var(--pale-blue);
+}
+.breathing-circle-core {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0B5E9E 0%, #0284c7 100%);
+  box-shadow: 0 0 24px rgba(11, 94, 158, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: center;
+  padding: 8px;
+  transition: transform 0.5s ease;
+}
+.breathing-circle-core.inhaling {
+  animation: breatheInAnim 4s ease-in-out forwards;
+}
+.breathing-circle-core.holding {
+  animation: breatheHoldAnim 4s ease-in-out forwards;
+}
+.breathing-circle-core.exhaling {
+  animation: breatheOutAnim 4s ease-in-out forwards;
+}
+
+@keyframes breatheInAnim {
+  from { transform: scale(0.85); box-shadow: 0 0 10px rgba(11, 94, 158, 0.2); }
+  to { transform: scale(1.25); box-shadow: 0 0 32px rgba(11, 94, 158, 0.55); }
+}
+@keyframes breatheHoldAnim {
+  0%, 100% { transform: scale(1.25); box-shadow: 0 0 32px rgba(11, 94, 158, 0.55); }
+  50% { transform: scale(1.28); box-shadow: 0 0 40px rgba(242, 107, 29, 0.4); }
+}
+@keyframes breatheOutAnim {
+  from { transform: scale(1.25); box-shadow: 0 0 32px rgba(11, 94, 158, 0.55); }
+  to { transform: scale(0.85); box-shadow: 0 0 10px rgba(11, 94, 158, 0.2); }
+}
+
+/* Daily Affirmation Card */
+.affirmation-card {
+  background: linear-gradient(135deg, #F8FAFC 0%, #EFF6FF 100%);
+  border: 1px solid #DBEAFE;
+  border-radius: var(--radius-card);
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.affirmation-quote-mark {
+  font-size: 2.4rem;
+  line-height: 1;
+  color: var(--primary-blue);
+  opacity: 0.4;
+  margin-bottom: 8px;
+}
+.affirmation-text {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--deep-navy);
+  line-height: 1.45;
+  margin-bottom: 16px;
+}
+
+/* Emotional Weather Mood Selector */
+.weather-selector-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-card);
+  padding: 24px;
+  margin-top: 24px;
+}
+.mood-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+.mood-chip-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 14px 10px;
+  background: #F8FAFC;
+  border: 1.5px solid var(--border-light);
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--deep-navy);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.mood-chip-btn:hover {
+  background: var(--pale-blue);
+  border-color: #93C5FD;
+}
+.mood-chip-btn.selected {
+  background: var(--pale-blue);
+  border-color: var(--primary-blue);
+  color: var(--primary-blue);
+  box-shadow: 0 0 0 1px var(--primary-blue);
+}
+
+/* Milestone Status Badges */
+.milestone-badge-tag {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  margin-bottom: 6px;
+}
+.milestone-badge-tag.current {
+  background: #DBEAFE;
+  color: #1E40AF;
+}
+.milestone-badge-tag.completed {
+  background: #D1FAE5;
+  color: #065F46;
+}
+.milestone-badge-tag.upcoming {
+  background: #F3F4F6;
+  color: #4B5563;
+}
+
+/* Ritual Step Checkbox & Mark All Done */
+.btn-mark-all-done {
+  margin-top: 14px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--primary-blue);
+  background: none;
+  border: none;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: var(--radius-pill);
+  transition: background 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-mark-all-done:hover {
+  background: var(--pale-blue);
+}
