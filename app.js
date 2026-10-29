@@ -1920,13 +1920,11 @@ function renderRecap() {
 
 
 /* ==================== SVG ICONS & AVATARS ==================== */
+var GUIDE_CHARACTER_PATH = 'M 333 64 L 344 66 L 344 68 L 335 89 L 325 103 L 305 123 L 283 139 L 279 141 L 274 132 L 299 113 L 316 96 L 326 82 L 333 65 Z M 229 81 L 244 82 L 253 90 L 256 97 L 256 105 L 253 113 L 247 119 L 240 122 L 227 121 L 218 114 L 214 104 L 215 95 L 218 89 L 223 84 L 228 82 Z M 240 93 L 232 92 L 227 96 L 227 107 L 233 111 L 240 110 L 245 104 L 245 99 L 241 94 Z M 110 104 L 112 104 L 121 116 L 132 124 L 154 133 L 181 137 L 242 136 L 256 139 L 262 142 L 267 148 L 267 159 L 260 166 L 218 180 L 212 186 L 214 188 L 264 187 L 276 190 L 283 196 L 285 201 L 285 210 L 283 214 L 275 221 L 260 227 L 212 236 L 188 243 L 179 248 L 171 256 L 166 267 L 165 326 L 166 353 L 168 354 L 201 298 L 218 266 L 220 259 L 232 260 L 233 359 L 249 332 L 264 298 L 274 265 L 278 240 L 279 238 L 290 240 L 282 280 L 267 321 L 249 356 L 231 383 L 220 379 L 219 288 L 168 377 L 157 375 L 154 331 L 154 273 L 156 261 L 160 252 L 165 245 L 177 236 L 201 227 L 254 217 L 268 212 L 274 207 L 274 203 L 272 201 L 262 198 L 212 199 L 207 197 L 201 189 L 201 181 L 206 174 L 213 170 L 250 158 L 254 156 L 256 152 L 251 149 L 240 147 L 178 148 L 152 144 L 137 139 L 114 125 L 102 110 L 109 105 Z';
+
 var ICONS = {
-  guideAvatar: '<svg class="guide-avatar-svg" width="22" height="22" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">' +
-    '<circle cx="24" cy="12" r="5"/>' +
-    '<path d="M 12 25 C 16 18, 22 21, 24 27 C 26 21, 32 18, 36 25"/>' +
-    '<path d="M 24 27 C 23 34, 25 39, 24 44"/>' +
-    '<path d="M 18 35 C 22 38, 26 38, 30 35"/>' +
-    '</svg>',
+  guideAvatar: '<svg class="guide-avatar-svg" width="22" height="22" viewBox="0 0 447 447" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="' + GUIDE_CHARACTER_PATH + '"/></svg>',
+  guideHero: '<svg class="guide-hero-svg" width="56" height="56" viewBox="0 0 447 447" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="' + GUIDE_CHARACTER_PATH + '"/></svg>',
   check: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
   menu: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>'
 };
@@ -3298,7 +3296,14 @@ function renderSiteFooter() {
 // 1. Offline Reassurance Chatbot Drawer
 function openChatbotDrawer(initialTopicId) {
   var chatData = CONTENT.chatbot || {};
-  var html = '<div class="chatbot-conversation" id="chat-messages">' +
+  var html = '<div class="chatbot-header-card">' +
+    '<div class="chatbot-hero-avatar">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
+    '<div class="chatbot-hero-meta">' +
+      '<h4 class="chatbot-hero-title">' + escHTML(CONTENT.guide.avatarTitle || 'The Bodywise Guide') + '</h4>' +
+      '<span class="chatbot-hero-badge"><span class="chatbot-status-pulse"></span> Instant reassurance &middot; Offline</span>' +
+    '</div>' +
+  '</div>' +
+  '<div class="chatbot-conversation" id="chat-messages">' +
     '<div class="chat-msg guide">' +
       '<div class="guide-avatar-circle" style="width:34px;height:34px;">' + ICONS.guideAvatar + '</div>' +
       '<div class="chat-bubble">' + escHTML(chatData.welcome || "I am here whenever you feel uncertain.") + '</div>' +
@@ -3335,25 +3340,43 @@ function openChatbotDrawer(initialTopicId) {
       // Append Guide Answer Bubble
       setTimeout(function () {
         var guideMsg = document.createElement('div');
-        guideMsg.className = 'chat-msg guide';
+        guideMsg.className = 'chat-msg guide fade-in-entry';
         guideMsg.innerHTML = '<div class="guide-avatar-circle" style="width:34px;height:34px;">' + ICONS.guideAvatar + '</div>' +
-          '<div class="chat-bubble">' + escHTML(topic.answer) + '</div>';
+          '<div class="chat-bubble">' +
+            '<div style="font-size:0.75rem;font-weight:700;color:var(--primary-blue);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">' + escHTML(topic.chip) + '</div>' +
+            escHTML(topic.answer).replace(/\n/g, '<br>') +
+          '</div>';
         msgsEl.appendChild(guideMsg);
+        msgsEl.scrollTop = msgsEl.scrollHeight;
 
         // Render follow up options
-        optsEl.innerHTML = '<div style="display:flex;gap:10px;margin-top:16px;">' +
-          '<button type="button" class="btn btn-secondary btn-sm" id="btn-chat-more">' + escHTML(chatData.anotherQuestion || 'Ask another') + '</button>' +
-          '<button type="button" class="btn btn-primary btn-sm" id="btn-chat-close">' + escHTML(chatData.backToRitual || 'Back to ritual') + '</button>' +
+        optsEl.innerHTML = '<div class="chat-followups" style="display:flex;flex-direction:column;gap:10px;margin-top:14px;">' +
+          '<button type="button" class="btn btn-primary btn-block" id="btn-chat-more">' + escHTML(chatData.anotherQuestion || 'Ask another question') + '</button>' +
+          '<div style="display:flex;gap:12px;justify-content:center;font-size:0.85rem;margin-top:4px;">' +
+            '<a href="#today" class="chat-shortcut-link" data-close-drawer="true" style="color:var(--primary-blue);font-weight:600;text-decoration:none;">Daily ritual</a>' +
+            '<span style="color:var(--border-subtle);">&middot;</span>' +
+            '<a href="#mind" class="chat-shortcut-link" data-close-drawer="true" style="color:var(--primary-blue);font-weight:600;text-decoration:none;">Mind Space</a>' +
+            '<span style="color:var(--border-subtle);">&middot;</span>' +
+            '<a href="#timeline" class="chat-shortcut-link" data-close-drawer="true" style="color:var(--primary-blue);font-weight:600;text-decoration:none;">Timeline</a>' +
+          '</div>' +
         '</div>';
 
-        panelEl.querySelector('#btn-chat-more').addEventListener('click', function () {
-          openChatbotDrawer();
+        var moreBtn = optsEl.querySelector('#btn-chat-more');
+        if (moreBtn) {
+          moreBtn.addEventListener('click', function () {
+            openChatbotDrawer();
+          });
+        }
+
+        optsEl.querySelectorAll('[data-close-drawer="true"]').forEach(function (link) {
+          link.addEventListener('click', function (e) {
+            e.preventDefault();
+            var target = link.getAttribute('href').replace(/^#/, '');
+            Drawer.close();
+            scrollToSection(target);
+          });
         });
-        panelEl.querySelector('#btn-chat-close').addEventListener('click', function () {
-          Drawer.close();
-          scrollToSection('today');
-        });
-      }, 180);
+      }, 160);
     }
 
     panelEl.querySelectorAll('[data-topic-id]').forEach(function (btn) {

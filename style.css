@@ -4137,6 +4137,63 @@ textarea {
   justify-content: center;
 }
 
+/* Chatbot header hero */
+.chatbot-header-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%);
+  border-radius: var(--radius-md);
+  margin-bottom: 20px;
+  border: 1px solid #BFDBFE;
+}
+.chatbot-hero-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  border: 2px solid var(--primary-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-blue);
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(28, 78, 216, 0.15);
+}
+.chatbot-hero-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chatbot-hero-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--deep-navy);
+}
+.chatbot-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #1E40AF;
+}
+.chatbot-status-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10B981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25);
+}
+.guide-avatar-svg {
+  display: block;
+}
+.guide-hero-svg {
+  display: block;
+}
+
 /* Chatbot drawer layout */
 .chatbot-conversation {
   display: flex;
