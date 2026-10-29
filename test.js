@@ -697,6 +697,54 @@
   }
   assert(overCount === 0, 'All user-facing copy strings in CONTENT are 12 words or fewer per line');
 
+  // 25. Master Design: Hero Benefits & Milestone Node Placards
+  console.log('\nSuite 25: Master Upgrade Hero Layout & Milestone Node Placards');
+  assert(CONTENT.landing && Array.isArray(CONTENT.landing.benefits) && CONTENT.landing.benefits.length === 3, 'Hero benefits has 3 items');
+  assert(appCode.indexOf('hero-benefits-grid') !== -1, 'app.js renders hero-benefits-grid container');
+  assert(appCode.indexOf('benefit-pill') !== -1, 'app.js renders benefit-pill elements');
+  assert(appCode.indexOf('journey-milestones-grid') !== -1, 'app.js renders journey-milestones-grid container');
+  assert(appCode.indexOf('journey-milestone-node node-navy') !== -1, 'Milestone Node 1 (Week 1 Foundation) defined');
+  assert(appCode.indexOf('journey-milestone-node node-blue') !== -1, 'Milestone Node 2 (Week 4 Early signs) defined');
+  assert(appCode.indexOf('journey-milestone-node node-coral') !== -1, 'Milestone Node 3 (Week 12 Real change) defined');
+
+  // 26. Desktop Stepper Rail
+  console.log('\nSuite 26: Desktop Rail Connected Stepper');
+  assert(appCode.indexOf('rail-stepper') !== -1, 'app.js renders rail-stepper element');
+  assert(appCode.indexOf('rail-track-line') !== -1, 'app.js renders rail-track-line 2px progress track');
+  assert(appCode.indexOf('rail-step-node') !== -1, 'app.js renders circular rail-step-node');
+
+  // 27. Timeline Placards with Beneath & Expect Bullets
+  console.log('\nSuite 27: Timeline Placards with Duration Pill, Status Tag & Micro-Copy Bullets');
+  assert(appCode.indexOf('timeline-placard') !== -1, 'app.js renders timeline-placard cards');
+  assert(appCode.indexOf('placard-duration') !== -1, 'Placard includes duration tag');
+  assert(appCode.indexOf('placard-status-badge') !== -1, 'Placard includes status tag');
+  assert(appCode.indexOf('placard-you-are-here') !== -1, 'Placard includes You Are Here indicator');
+  assert(appCode.indexOf('What is happening beneath:') !== -1, 'Placard includes biological beneath bullet');
+  assert(appCode.indexOf('What to expect:') !== -1, 'Placard includes expectation bullet');
+
+  // 28. In-Depth Conversational AI Companion (3 Batches & 3-Part Answers)
+  console.log('\nSuite 28: In-Depth Conversational AI Companion (3 Categories & 3-Part Answers)');
+  assert(Array.isArray(CONTENT.chatbot.categories) && CONTENT.chatbot.categories.length === 3, 'Chatbot provides 3 category batches');
+  assert(CONTENT.chatbot.categories.some(function (c) { return c.id === 'bio'; }), 'Category 1: Biological Concerns defined');
+  assert(CONTENT.chatbot.categories.some(function (c) { return c.id === 'habits'; }), 'Category 2: Habits & Motivation Drops defined');
+  assert(CONTENT.chatbot.categories.some(function (c) { return c.id === 'hacks'; }), 'Category 3: Product & Routine Hacks defined');
+  CONTENT.chatbot.categories.forEach(function (cat) {
+    assert(cat.questions && cat.questions.length === 3, 'Category ' + cat.id + ' contains exactly 3 targeted questions');
+    cat.questions.forEach(function (q) {
+      assert(q.reassurance && q.reassurance.length > 5, 'Question ' + q.id + ' has Direct Reassurance');
+      assert(q.science && q.science.length > 5, 'Question ' + q.id + ' has Science explanation');
+      assert(q.action && q.action.length > 5, 'Question ' + q.id + ' has Action step');
+    });
+  });
+  assert(appCode.indexOf('answer-reassurance') !== -1, 'app.js renders Direct Reassurance card');
+  assert(appCode.indexOf('answer-science') !== -1, 'app.js renders Science card');
+  assert(appCode.indexOf('answer-action') !== -1, 'app.js renders Action card');
+
+  // 29. Official Bodywise Links
+  console.log('\nSuite 29: Header Store Pill & Official Links');
+  assert(appCode.indexOf('header-store-pill') !== -1, 'Header includes Shop Official Formulas pill');
+  assert(appCode.indexOf('https://bebodywise.com') !== -1, 'Official bebodywise.com links configured');
+
   console.log('\n----------------------------------------------------');
   console.log('Test Summary: ' + passedTests + ' / ' + totalTests + ' passed (' + failedTests + ' failed)');
   console.log('----------------------------------------------------');

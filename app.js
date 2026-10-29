@@ -1995,6 +1995,10 @@ UI.renderHeader = function () {
 
     // Header Actions
     '<div class="header-actions">' +
+      '<a href="https://bebodywise.com" target="_blank" rel="noopener" class="header-store-pill" title="Shop Official Bodywise Formulas">' +
+        '<span>Shop Official Formulas</span>' +
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>' +
+      '</a>' +
       '<button type="button" class="btn btn-primary btn-sm" id="header-cta-btn" data-scroll="' + ctaTarget + '">' + ctaLabel + '</button>' +
       '<button type="button" class="header-menu-btn" id="header-menu-btn" aria-label="Menu and settings">' +
         ICONS.menu +
@@ -2062,6 +2066,23 @@ function initScrollspy() {
             link.classList.remove('active');
           }
         });
+
+        // Dynamic desktop stepper highlight
+        var railButtons = document.querySelectorAll('.rail-step-btn');
+        railButtons.forEach(function (btn) {
+          var target = btn.getAttribute('data-scroll');
+          var node = btn.querySelector('.rail-step-node');
+          if (target === id) {
+            btn.classList.add('active');
+            if (node && !node.classList.contains('completed')) {
+              node.classList.add('active');
+            }
+          } else {
+            btn.classList.remove('active');
+            if (node) node.classList.remove('active');
+          }
+        });
+
         try {
           history.replaceState(null, '', '#' + id);
         } catch (e) {}
@@ -2105,7 +2126,7 @@ function renderForecastStripHTML(cfg, profile) {
   return html;
 }
 
-/* ---- Section 1: Hero Section (Section 5.1) ---- */
+/* ---- Section 1: Hero Section (Section 5.1 - Upgraded UI Placards & Benefit Badges) ---- */
 function renderHeroSection(container) {
   var profile = Storage.load();
   var c = CONTENT.landing;
@@ -2128,23 +2149,23 @@ function renderHeroSection(container) {
         '<div class="hero-brand-eyebrow">' + escHTML(c.eyebrow || 'BE BODYWISE') + '</div>' +
         '<h1 class="hero-headline">' + escHTML(c.headline || 'Your Personal Progress Companion') + '</h1>' +
         '<p class="hero-subline">' + escHTML(c.subline || 'See real change, even when it is slow.') + '</p>' +
-        '<div class="hero-benefits">' +
-          '<div class="benefit-row">' +
-            '<span class="benefit-icon">' + ICONS.check + '</span>' +
-            '<span class="benefit-text">' + escHTML(c.benefits[0]) + '</span>' +
+        '<div class="hero-benefits-grid">' +
+          '<div class="benefit-pill">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0B5E9E" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' +
+            '<span>' + escHTML(c.benefits[0]) + '</span>' +
           '</div>' +
-          '<div class="benefit-row">' +
-            '<span class="benefit-icon">' + ICONS.check + '</span>' +
-            '<span class="benefit-text">' + escHTML(c.benefits[1]) + '</span>' +
+          '<div class="benefit-pill">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0B5E9E" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' +
+            '<span>' + escHTML(c.benefits[1]) + '</span>' +
           '</div>' +
-          '<div class="benefit-row">' +
-            '<span class="benefit-icon">' + ICONS.check + '</span>' +
-            '<span class="benefit-text">' + escHTML(c.benefits[2]) + '</span>' +
+          '<div class="benefit-pill">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0B5E9E" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' +
+            '<span>' + escHTML(c.benefits[2]) + '</span>' +
           '</div>' +
         '</div>' +
         '<div class="hero-cta-group">' +
           '<button type="button" class="btn btn-primary" id="hero-get-started" data-scroll="' + (profile ? 'today' : 'setup') + '">' +
-            (profile ? 'Continue your daily ritual \u2192' : escHTML(c.cta) + ' \u2192') +
+            (profile ? 'Continue your daily ritual →' : escHTML(c.cta) + ' →') +
           '</button>' +
           '<span class="privacy-badge">' +
             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' +
@@ -2169,10 +2190,28 @@ function renderHeroSection(container) {
                 '<circle class="milestone-dot" cx="180" cy="85" r="6" fill="#0B5E9E"/>' +
                 '<circle class="milestone-dot" cx="360" cy="30" r="7" fill="#F26B1D"/>' +
               '</svg>' +
-              '<div class="journey-labels">' +
-                '<span>Week 1 · Foundation</span>' +
-                '<span>Week 4 · Early signs</span>' +
-                '<span>Week 12 · Real change</span>' +
+              '<div class="journey-milestones-grid">' +
+                '<div class="journey-milestone-node node-navy">' +
+                  '<div class="milestone-node-dot"></div>' +
+                  '<div class="milestone-node-info">' +
+                    '<span class="milestone-node-time">Week 1</span>' +
+                    '<span class="milestone-node-title">Foundation</span>' +
+                  '</div>' +
+                '</div>' +
+                '<div class="journey-milestone-node node-blue">' +
+                  '<div class="milestone-node-dot"></div>' +
+                  '<div class="milestone-node-info">' +
+                    '<span class="milestone-node-time">Week 4</span>' +
+                    '<span class="milestone-node-title">Early signs</span>' +
+                  '</div>' +
+                '</div>' +
+                '<div class="journey-milestone-node node-coral">' +
+                  '<div class="milestone-node-dot"></div>' +
+                  '<div class="milestone-node-info">' +
+                    '<span class="milestone-node-time">Week 12</span>' +
+                    '<span class="milestone-node-title">Real change</span>' +
+                  '</div>' +
+                '</div>' +
               '</div>' +
             '</div>'
           ) +
@@ -2258,21 +2297,30 @@ function renderSetupSection(container) {
     var pCount = (profile.products || []).length;
     var html = '<div class="container">' +
       '<div class="section-header text-center">' +
-        '<h2 class="section-title">Your plan</h2>' +
-        '<p class="section-subline">' + escHTML(concernCfg.label) + ' routine · ' + pCount + ' formulas on your shelf</p>' +
+        '<h2 class="section-title">Bathroom Shelf</h2>' +
+        '<p class="section-subline">' + escHTML(concernCfg.label) + ' routine · ' + pCount + ' active formula' + (pCount === 1 ? '' : 's') + '</p>' +
+        '<p class="official-shelf-sublink" style="font-size:0.88rem;color:#0B5E9E;margin-top:6px;">' +
+          'Need to refill or explore actives? <a href="https://bebodywise.com" target="_blank" rel="noopener" class="store-link-accent" style="color:#0B5E9E;font-weight:600;text-decoration:underline;">View full ingredients on Be Bodywise ↗</a>' +
+        '</p>' +
       '</div>' +
 
-      '<div class="card text-center" style="max-width:560px;margin:0 auto;padding:32px 24px;">' +
-        '<div class="guide-speech-card" style="margin-bottom:16px;">' +
-          '<div class="guide-avatar-circle">' + ICONS.guideAvatar + '</div>' +
-          '<div class="guide-speech-body text-left">' +
-            '<div class="guide-speech-title">' + escHTML(CONTENT.guide.avatarTitle) + '</div>' +
-            '<div class="guide-speech-text">Your bathroom shelf is set up! Ready to check off today\'s ritual?</div>' +
-          '</div>' +
+      '<div class="card" style="max-width:620px;margin:0 auto;padding:28px 24px;">' +
+        '<div class="shelf-active-list" style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px;">' +
+          (profile.products || []).map(function (p) {
+            return '<div class="shelf-active-item" style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;">' +
+              '<div class="shelf-item-icon" style="width:36px;height:36px;border-radius:8px;background:#EBF4FC;display:flex;align-items:center;justify-content:center;color:#0B5E9E;flex-shrink:0;">' +
+                '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' +
+              '</div>' +
+              '<div class="shelf-item-details" style="flex:1;">' +
+                '<div class="shelf-item-name" style="font-weight:600;color:#0F172A;font-size:0.95rem;">' + escHTML(p.name || 'Bodywise formula') + '</div>' +
+                '<div class="shelf-item-meta" style="font-size:0.8rem;color:#64748B;">' + (p.frequency || 'Daily') + ' · Started ' + Utils.formatDate(p.openedOn || profile.startDate) + '</div>' +
+              '</div>' +
+            '</div>';
+          }).join('') +
         '</div>' +
-        '<div style="display:flex;gap:12px;justify-content:center;margin-top:20px;">' +
-          '<button type="button" class="btn btn-primary" id="btn-go-today">Open today\'s ritual \u2192</button>' +
-          '<button type="button" class="btn btn-secondary" id="btn-edit-plan">Update shelf formulas</button>' +
+        '<div style="display:flex;gap:12px;justify-content:center;margin-top:16px;">' +
+          '<button type="button" class="btn btn-primary btn-sm" id="btn-go-today">Daily ritual ↓</button>' +
+          '<button type="button" class="btn btn-secondary btn-sm" id="btn-edit-plan">Update shelf formulas</button>' +
         '</div>' +
       '</div>' +
     '</div>';
@@ -2310,7 +2358,6 @@ function renderSetupSection(container) {
   renderBathroomShelfSetup(container);
 }
 
-// 1. Smart Fork Question
 function renderSmartForkScreen(container) {
   var fork = CONTENT.fork;
   var html = '<div class="container">' +
@@ -2918,7 +2965,7 @@ function renderCheckinSection(container) {
   }
 }
 
-/* ---- Section 5: Timeline (Fixed fromWeek / toWeek Duration - NO undefinedw!) ---- */
+/* ---- Section 5: Timeline (Upgraded Timeline Placards with Beneath & Expect Bullets) ---- */
 function renderTimelineSection(container) {
   var profile = Storage.load();
 
@@ -2956,9 +3003,9 @@ function renderTimelineSection(container) {
     '</div>' +
 
     '<div class="timeline-grid">' +
-      // Left Column: Milestone list with clean duration & status tags
+      // Left Column: Modern Timeline Placards with Duration & Status Tags
       '<div class="timeline-left-col">' +
-        '<div class="timeline">';
+        '<div class="timeline-placards-list timeline">';
 
   (cfg.milestones || []).forEach(function (ms) {
     var fromW = ms.fromWeek || 1;
@@ -2970,14 +3017,27 @@ function renderTimelineSection(container) {
     var statusClass = isPassed ? 'completed' : (isCurrent ? 'current' : 'upcoming');
     var statusText = isPassed ? 'Completed' : (isCurrent ? 'Current' : 'Upcoming');
 
-    html += '<div class="milestone' + (isPassed ? ' passed' : '') + (isCurrent ? ' current' : '') + '">' +
-      '<div class="milestone-badge">' + durationLabel + '</div>' +
-      '<div class="milestone-content">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
-          '<h3 class="milestone-title" style="margin-bottom:0;">' + escHTML(ms.title) + '</h3>' +
-          '<span class="milestone-badge-tag ' + statusClass + '">' + statusText + '</span>' +
+    var beneathText = ms.beneath || (ms.text ? ms.text.split('.')[0] + '.' : 'Cellular adjustments underway.');
+    var expectText = ms.expect || (ms.text && ms.text.indexOf('.') !== -1 ? ms.text.substring(ms.text.indexOf('.') + 1).trim() : (ms.text || 'Normal pace of progress.'));
+
+    html += '<div class="timeline-placard milestone' + (isPassed ? ' passed passed-placard' : '') + (isCurrent ? ' current current-placard' : '') + '">' +
+      '<div class="placard-header">' +
+        '<span class="placard-duration milestone-badge">' + durationLabel + '</span>' +
+        '<span class="placard-status-badge milestone-badge-tag ' + statusClass + '">' +
+          (isCurrent ? '<span class="status-pulse-dot"></span> ' : '') + statusText +
+        '</span>' +
+      '</div>' +
+      (isCurrent ? '<div class="placard-you-are-here">You are here in your journey</div>' : '') +
+      '<h3 class="placard-title milestone-title">' + escHTML(ms.title) + '</h3>' +
+      '<div class="placard-bullets milestone-content">' +
+        '<div class="placard-bullet">' +
+          '<span class="placard-bullet-label">What is happening beneath:</span>' +
+          '<span class="placard-bullet-text">' + escHTML(beneathText) + '</span>' +
         '</div>' +
-        '<p class="milestone-detail">' + escHTML(ms.text || ms.detail || '') + '</p>' +
+        '<div class="placard-bullet">' +
+          '<span class="placard-bullet-label">What to expect:</span>' +
+          '<span class="placard-bullet-text">' + escHTML(expectText) + '</span>' +
+        '</div>' +
       '</div>' +
     '</div>';
   });
@@ -3336,6 +3396,52 @@ function renderSiteFooter() {
 // 1. Offline Reassurance Chatbot Drawer
 function openChatbotDrawer(initialTopicId) {
   var chatData = CONTENT.chatbot || {};
+  var categories = chatData.categories || [
+    {
+      id: 'bio',
+      label: 'Biological Concerns',
+      questions: (chatData.topics || []).slice(0, 3)
+    },
+    {
+      id: 'habits',
+      label: 'Habits & Motivation Drops',
+      questions: (chatData.topics || []).slice(1, 4)
+    },
+    {
+      id: 'hacks',
+      label: 'Product & Routine Hacks',
+      questions: (chatData.topics || []).slice(2, 5)
+    }
+  ];
+
+  var currentCatId = 'bio';
+  if (initialTopicId) {
+    categories.forEach(function (cat) {
+      if ((cat.questions || []).some(function (q) { return q.id === initialTopicId; })) {
+        currentCatId = cat.id;
+      }
+    });
+  }
+
+  function renderCategoryOptionsHTML(catId) {
+    var cat = categories.find(function (c) { return c.id === catId; }) || categories[0];
+    var html = '<div class="chat-batch-header">' +
+      '<span class="chat-batch-title">' + escHTML(cat.label) + '</span>' +
+      '<span class="chat-batch-badge">3 targeted questions</span>' +
+    '</div>' +
+    '<div class="chat-quick-chips">';
+
+    (cat.questions || []).forEach(function (t) {
+      html += '<button type="button" class="chat-chip-btn" data-topic-id="' + t.id + '">' +
+        '<div style="font-weight:700;color:var(--text-primary);font-size:0.88rem;margin-bottom:3px;">' + escHTML(t.shortTitle || t.chip || t.question) + '</div>' +
+        '<div style="font-size:0.8rem;color:var(--text-secondary);line-height:1.35;">' + escHTML(t.question) + '</div>' +
+      '</button>';
+    });
+
+    html += '</div>';
+    return html;
+  }
+
   var html = '<div class="chatbot-header-card">' +
     '<div class="chatbot-hero-avatar">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
     '<div class="chatbot-hero-meta">' +
@@ -3343,29 +3449,62 @@ function openChatbotDrawer(initialTopicId) {
       '<span class="chatbot-hero-badge"><span class="chatbot-status-pulse"></span> Instant reassurance &middot; Offline</span>' +
     '</div>' +
   '</div>' +
+
+  // Category Switcher Tabs
+  '<div class="chat-category-tabs">' +
+    categories.map(function (c) {
+      return '<button type="button" class="chat-tab-btn' + (c.id === currentCatId ? ' active' : '') + '" data-cat-id="' + c.id + '">' +
+        escHTML(c.label) +
+      '</button>';
+    }).join('') +
+  '</div>' +
+
   '<div class="chatbot-conversation" id="chat-messages">' +
     '<div class="chat-msg guide">' +
       '<div class="guide-avatar-circle" style="width:34px;height:34px;">' + ICONS.guideAvatar + '</div>' +
-      '<div class="chat-bubble">' + escHTML(chatData.welcome || "I am here whenever you feel uncertain.") + '</div>' +
+      '<div class="chat-bubble">' + (chatData.welcome ? escHTML(chatData.welcome).split(String.fromCharCode(10)).join('<br>') : 'Wellness takes time, and doubts are normal.') + '</div>' +
     '</div>' +
   '</div>' +
 
   '<div id="chat-options-area">' +
-    '<p style="font-size:0.82rem;font-weight:700;text-transform:uppercase;color:var(--text-secondary);margin-bottom:8px;">Select a question to ask:</p>' +
-    '<div class="chat-quick-chips">';
-
-  (chatData.topics || []).forEach(function (t) {
-    html += '<button type="button" class="chat-chip-btn" data-topic-id="' + t.id + '">' +
-      '<span>' + escHTML(t.question) + '</span>' +
-      '<span style="font-size:0.85rem;color:var(--primary-blue);">&rarr;</span>' +
-    '</button>';
-  });
-
-  html += '</div></div>';
+    renderCategoryOptionsHTML(currentCatId) +
+  '</div>';
 
   Drawer.open(chatData.title || 'Ask the Guide', html, function (panelEl) {
+    function bindCategoryTabs() {
+      panelEl.querySelectorAll('[data-cat-id]').forEach(function (tab) {
+        tab.addEventListener('click', function () {
+          currentCatId = this.getAttribute('data-cat-id');
+          panelEl.querySelectorAll('[data-cat-id]').forEach(function (t) { t.classList.remove('active'); });
+          this.classList.add('active');
+
+          var optsEl = panelEl.querySelector('#chat-options-area');
+          if (optsEl) {
+            optsEl.innerHTML = renderCategoryOptionsHTML(currentCatId);
+            bindQuestionChips();
+          }
+        });
+      });
+    }
+
+    function bindQuestionChips() {
+      panelEl.querySelectorAll('[data-topic-id]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var tid = this.getAttribute('data-topic-id');
+          showTopicAnswer(tid);
+        });
+      });
+    }
+
     function showTopicAnswer(topicId) {
       var topic = (chatData.topics || []).find(function (t) { return t.id === topicId; });
+      if (!topic) {
+        categories.forEach(function (cat) {
+          (cat.questions || []).forEach(function (q) {
+            if (q.id === topicId) topic = q;
+          });
+        });
+      }
       if (!topic) return;
 
       var msgsEl = panelEl.querySelector('#chat-messages');
@@ -3376,16 +3515,44 @@ function openChatbotDrawer(initialTopicId) {
       userMsg.className = 'chat-msg user';
       userMsg.innerHTML = '<div class="chat-bubble">' + escHTML(topic.question) + '</div>';
       msgsEl.appendChild(userMsg);
+      msgsEl.scrollTop = msgsEl.scrollHeight;
 
-      // Append Guide Answer Bubble
+      // Append Guide 3-Part Answer
       setTimeout(function () {
         var guideMsg = document.createElement('div');
         guideMsg.className = 'chat-msg guide fade-in-entry';
-        guideMsg.innerHTML = '<div class="guide-avatar-circle" style="width:34px;height:34px;">' + ICONS.guideAvatar + '</div>' +
-          '<div class="chat-bubble">' +
-            '<div style="font-size:0.75rem;font-weight:700;color:var(--primary-blue);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">' + escHTML(topic.chip) + '</div>' +
-            escHTML(topic.answer).replace(/\n/g, '<br>') +
+
+        var reassHtml = topic.reassurance ? escHTML(topic.reassurance).split(String.fromCharCode(10)).join('<br>') : escHTML(topic.answer).split(String.fromCharCode(10)).join('<br>');
+        var scienceHtml = topic.science ? escHTML(topic.science).split(String.fromCharCode(10)).join('<br>') : 'Active compounds require 28 to 90 days to harmonize with normal cellular renewal.';
+        var actionHtml = topic.action ? escHTML(topic.action).split(String.fromCharCode(10)).join('<br>') : 'Stay consistent with your daily steps and observe subtle micro-markers.';
+
+        guideMsg.innerHTML = '<div class="guide-avatar-circle" style="width:34px;height:34px;flex-shrink:0;">' + ICONS.guideAvatar + '</div>' +
+          '<div class="chat-structured-answer" style="flex:1;">' +
+            '<div class="answer-card answer-reassurance">' +
+              '<div class="answer-card-header">' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#047857" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>' +
+                '<span>Direct Reassurance</span>' +
+              '</div>' +
+              '<p class="answer-card-text">' + reassHtml + '</p>' +
+            '</div>' +
+
+            '<div class="answer-card answer-science">' +
+              '<div class="answer-card-header">' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0B5E9E" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>' +
+                '<span>The Science (Biology)</span>' +
+              '</div>' +
+              '<p class="answer-card-text">' + scienceHtml + '</p>' +
+            '</div>' +
+
+            '<div class="answer-card answer-action">' +
+              '<div class="answer-card-header">' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="2.5"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>' +
+                '<span>Your Action Today</span>' +
+              '</div>' +
+              '<p class="answer-card-text">' + actionHtml + '</p>' +
+            '</div>' +
           '</div>';
+
         msgsEl.appendChild(guideMsg);
         msgsEl.scrollTop = msgsEl.scrollHeight;
 
@@ -3404,7 +3571,8 @@ function openChatbotDrawer(initialTopicId) {
         var moreBtn = optsEl.querySelector('#btn-chat-more');
         if (moreBtn) {
           moreBtn.addEventListener('click', function () {
-            openChatbotDrawer();
+            optsEl.innerHTML = renderCategoryOptionsHTML(currentCatId);
+            bindQuestionChips();
           });
         }
 
@@ -3419,12 +3587,8 @@ function openChatbotDrawer(initialTopicId) {
       }, 160);
     }
 
-    panelEl.querySelectorAll('[data-topic-id]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var tid = this.getAttribute('data-topic-id');
-        showTopicAnswer(tid);
-      });
-    });
+    bindCategoryTabs();
+    bindQuestionChips();
 
     if (initialTopicId) {
       showTopicAnswer(initialTopicId);
@@ -3586,18 +3750,22 @@ function renderDesktopRail() {
     { id: 'decide', label: 'Next step', done: false }
   ];
 
-  var html = '<ul class="rail-list">';
+  var html = '<div class="rail-stepper">' +
+    '<div class="rail-track-line"></div>' +
+    '<ul class="rail-stepper-list rail-list">';
+
   steps.forEach(function (s) {
-    html += '<li>' +
-      '<button type="button" class="rail-btn" data-scroll="' + s.id + '">' +
-        '<span class="rail-dot' + (s.done ? ' done' : '') + '">' +
-          (s.done ? ICONS.check : '') +
+    var nodeClass = s.done ? 'completed' : 'upcoming';
+    html += '<li class="rail-step-item">' +
+      '<button type="button" class="rail-step-btn rail-btn' + (s.done ? ' done' : '') + '" data-scroll="' + s.id + '">' +
+        '<span class="rail-step-node rail-dot ' + nodeClass + '">' +
+          (s.done ? ICONS.check : '<span class="node-inner-dot"></span>') +
         '</span>' +
-        '<span class="rail-label">' + escHTML(s.label) + '</span>' +
+        '<span class="rail-step-label rail-label">' + escHTML(s.label) + '</span>' +
       '</button>' +
     '</li>';
   });
-  html += '</ul>';
+  html += '</ul></div>';
 
   railEl.innerHTML = html;
 
