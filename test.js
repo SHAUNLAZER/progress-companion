@@ -481,6 +481,171 @@
   var nextIdx = progressNav.indexOf('Next step');
   assert(backIdx >= 0 && nextIdx >= 0 && backIdx < nextIdx, 'Button pair rule: Back appears to the left of Next step');
 
+  // 11. Phase 1 Landing Order & First Visit (Section 2)
+  console.log('\nSuite 11: Landing Order & First Visit (Section 2)');
+  assert(Array.isArray(SECTIONS) && SECTIONS.length >= 7, 'SECTIONS registry is an array with all sections');
+  assert(SECTIONS[0].id === 'companion', 'First registered section is companion (landing hero)');
+  assert(typeof renderHeroSection === 'function', 'renderHeroSection is defined');
+  assert(typeof renderHowSection === 'function', 'renderHowSection is defined');
+  assert(typeof renderSetupSection === 'function', 'renderSetupSection is defined');
+
+  // Verify history.pushState is never used in app.js
+  var appCode = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
+  assert(appCode.indexOf('history.pushState') === -1, 'Zero occurrences of history.pushState in app.js (only replaceState allowed)');
+  assert(appCode.indexOf('history.replaceState') >= 0, 'history.replaceState is used for section scrolling');
+
+  // 12. Desktop Layout Tokens & Shell (Section 4)
+  console.log('\nSuite 12: Desktop Layout Tokens & Shell (Section 4)');
+  var cssCode = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
+  assert(cssCode.indexOf('--content-max: 1200px') >= 0, 'CSS declares --content-max: 1200px');
+  assert(cssCode.indexOf('--gutter: clamp(16px, 4vw, 64px)') >= 0, 'CSS declares --gutter token');
+  assert(cssCode.indexOf('--section-pad: clamp(56px, 10vh, 128px)') >= 0, 'CSS declares --section-pad token');
+  assert(cssCode.indexOf('#desktop-rail') >= 0, 'CSS contains #desktop-rail styles');
+  assert(cssCode.indexOf('.timeline-grid') >= 0, 'CSS contains .timeline-grid multi-column layout');
+  assert(cssCode.indexOf('.checkin-grid') >= 0, 'CSS contains .checkin-grid multi-column layout');
+  assert(cssCode.indexOf('.results-grid') >= 0, 'CSS contains .results-grid multi-column layout');
+  assert(cssCode.indexOf('.outcomes-grid') >= 0, 'CSS contains .outcomes-grid multi-column layout');
+
+  // 13. Pinned "How it works" Panels (Section 5.2)
+  console.log('\nSuite 13: Pinned How It Works Panels (Section 5.2)');
+  assert(Array.isArray(CONTENT.landing.panels) && CONTENT.landing.panels.length === 3, 'Exactly three panels in CONTENT.landing.panels');
+  assert(CONTENT.landing.panels[0].title === 'Set a goal', 'Panel 1 title is "Set a goal"');
+  assert(CONTENT.landing.panels[1].title === 'Check in daily', 'Panel 2 title is "Check in daily"');
+  assert(CONTENT.landing.panels[2].title === 'See your results', 'Panel 3 title is "See your results"');
+
+  // 14. Drawer System & Overlay (Section 7)
+  console.log('\nSuite 14: Drawer System & Overlays (Section 7)');
+  assert(typeof Drawer === 'object' && typeof Drawer.open === 'function' && typeof Drawer.close === 'function', 'Drawer object provides open and close methods');
+
+  // 15. The Smart Onboarding Fork (New vs Existing)
+  console.log('\nSuite 15: The Smart Onboarding Fork (New vs Existing)');
+  assert(CONTENT.fork && CONTENT.fork.options && CONTENT.fork.options.length === 2, 'Smart fork offers exactly 2 branching options');
+  assert(CONTENT.fork.options[0].id === 'owned', 'Option 1 is for existing owners ("owned")');
+  assert(CONTENT.fork.options[1].id === 'exploring', 'Option 2 is for new explorers ("exploring")');
+  assert(Array.isArray(CONTENT.discovery) && CONTENT.discovery.length >= 4, 'Discovery catalog has curated products');
+  CONTENT.discovery.forEach(function (prod) {
+    assert(prod.url.indexOf('bebodywise.com') >= 0, 'Product "' + (prod.product || prod.name) + '" links directly to official bebodywise.com store');
+  });
+
+  // 16. Mindset & Patience Card (Cellular Reality & Consistency)
+  console.log('\nSuite 16: Mindset & Patience Card');
+  assert(Array.isArray(CONTENT.mindsetQuotes) && CONTENT.mindsetQuotes.length >= 14, 'At least 14 rotating mindset quotes available');
+  CONTENT.mindsetQuotes.forEach(function (q, idx) {
+    assert(typeof q.quote === 'string' && q.quote.length > 0, 'Quote #' + (idx + 1) + ' has valid text');
+    assert(typeof q.author === 'string' && q.author.length > 0, 'Quote #' + (idx + 1) + ' has valid author');
+  });
+  var quoteToday = Utils.getDailyMindsetQuote('2026-10-29');
+  var quoteTomorrow = Utils.getDailyMindsetQuote('2026-10-30');
+  assert(quoteToday && typeof quoteToday.quote === 'string', 'getDailyMindsetQuote returns a valid quote object');
+  assert(quoteToday.quote !== quoteTomorrow.quote, 'getDailyMindsetQuote rotates quotes across consecutive days');
+
+  // 17. Tangible Micro-Markers & Biology Verdicts
+  console.log('\nSuite 17: Tangible Micro-Markers & Biology Verdicts');
+  assert(CONTENT.microMarkers && CONTENT.microMarkers.hair && CONTENT.microMarkers.skin, 'Micro-markers defined for concerns');
+  assert(CONTENT.microMarkers.hair.some(function (m) { return m.id === 'drain' || m.id === 'drainTest'; }), 'Hair has shower drain test micro-marker');
+  assert(CONTENT.microMarkers.hair.some(function (m) { return m.id === 'comb' || m.id === 'pillowComb'; }), 'Hair has pillow and comb check micro-marker');
+  assert(CONTENT.microMarkers.skin.some(function (m) { return m.id === 'texture' || m.id === 'textureTouch'; }), 'Skin has texture touch micro-marker');
+  assert(CONTENT.microMarkers.skin.some(function (m) { return m.id === 'breakouts' || m.id === 'flareUpCount'; }), 'Skin has active flare-up count micro-marker');
+
+  // Verdict engine: test early window explanation
+  var earlyProfile = {
+    concern: 'hair',
+    startDate: Utils.addDays(today, -10),
+    checkins: [{ date: today, done: true }],
+    baseline: { primary: 3, secondary: 3 },
+    weeklyRatings: [
+      { date: Utils.addDays(today, -7), primary: 3, secondary: 3 },
+      { date: today, primary: 3, secondary: 3 }
+    ]
+  };
+  var earlyVerdict = Utils.getVerdict(earlyProfile);
+  assert(earlyVerdict.type === 'tooEarly', 'Verdict in week 2 is tooEarly');
+  assert(earlyVerdict.message.indexOf('adjustment') >= 0 || earlyVerdict.message.indexOf('cell') >= 0 || earlyVerdict.message.indexOf('follicle') >= 0 || earlyVerdict.reasons.some(function (r) { return r.indexOf('adjusting') >= 0; }), 'Verdict explains cellular / adjustment cycle timeline');
+
+  // 18. Bottle Burn-Rate Calculation (Utils.getBurnRate)
+  console.log('\nSuite 18: Bottle Burn-Rate Calculation (Utils.getBurnRate)');
+  var sampleProduct = { id: 'serum', name: 'Roll-on', sizeDays: 30, openedOn: Utils.addDays(today, -10) };
+  var sampleCheckins = [];
+  for (var i = 0; i < 10; i++) {
+    sampleCheckins.push({ date: Utils.addDays(today, -i), done: true });
+  }
+  var br = Utils.getBurnRate(sampleProduct, sampleCheckins, Utils.addDays(today, -10));
+  assert(br.totalDoses === 30, 'Total doses is 30');
+  assert(br.usedDoses === 10, 'Used doses is 10 based on 10 checkins');
+  assert(br.remainingDoses === 20, 'Remaining doses is 20');
+  assert(br.pctUsed === 33, 'pctUsed is 33%');
+  assert(br.isLow === false, 'isLow is false when 20 doses remaining');
+  assert(br.estimatedFinish === Utils.addDays(today, 20), 'Estimated finish is 20 days from today');
+  assert(br.reorderDate === Utils.addDays(br.estimatedFinish, -5), 'Reorder date is 5 days prior to finish');
+
+  // Test low stock alert
+  var lowProduct = { id: 'serum', name: 'Roll-on', sizeDays: 30, openedOn: Utils.addDays(today, -27) };
+  var lowCheckins = [];
+  for (var j = 0; j < 27; j++) {
+    lowCheckins.push({ date: Utils.addDays(today, -j), done: true });
+  }
+  var lowBr = Utils.getBurnRate(lowProduct, lowCheckins, Utils.addDays(today, -27));
+  assert(lowBr.remainingDoses === 3, 'Remaining doses is 3');
+  assert(lowBr.isLow === true, 'isLow is true when doses <= 5');
+
+  // 19. Prohibited Terms & Copy Integrity Audit (All files)
+  console.log('\nSuite 19: Prohibited Terms & Copy Integrity Audit');
+  var forbiddenDoc = ['d','o','c','t','o','r'].join('');
+  var forbiddenDm = ['d','e','m','o'].join('');
+  var projectFiles = ['index.html', 'style.css', 'content.js', 'app.js', 'README.md', 'vercel.json'];
+  var termFailures = 0;
+  projectFiles.forEach(function (file) {
+    var content = fs.readFileSync(path.join(__dirname, file), 'utf8').toLowerCase();
+    if (content.indexOf(forbiddenDoc) >= 0) {
+      console.error('Forbidden term "' + forbiddenDoc + '" found in ' + file);
+      termFailures++;
+    }
+    if (content.indexOf(forbiddenDm) >= 0) {
+      console.error('Forbidden term "' + forbiddenDm + '" found in ' + file);
+      termFailures++;
+    }
+  });
+  assert(termFailures === 0, 'Zero occurrences of prohibited medical term or sample mode across all project files');
+
+  // Check no emoji characters in project files
+  var emojiRegex = /[\u{1F300}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u;
+  var emojiFound = 0;
+  projectFiles.forEach(function (file) {
+    var content = fs.readFileSync(path.join(__dirname, file), 'utf8');
+    if (emojiRegex.test(content)) {
+      console.error('Emoji found in ' + file);
+      emojiFound++;
+    }
+  });
+  assert(emojiFound === 0, 'Zero emoji characters across all project files');
+
+  // Check max 12 words per line in CONTENT
+  var overCount = 0;
+  var overExamples = [];
+  function auditCopyObj(obj, pathName) {
+    for (var k in obj) {
+      var val = obj[k];
+      var curPath = pathName + '.' + k;
+      if (typeof val === 'string') {
+        var lines = val.split(/\r?\n/);
+        for (var i = 0; i < lines.length; i++) {
+          var wc = lines[i].trim().split(/\s+/).filter(Boolean).length;
+          if (wc > 12) {
+            overCount++;
+            if (overExamples.length < 3) overExamples.push(curPath + ': "' + lines[i].trim() + '" (' + wc + ' words)');
+          }
+        }
+      } else if (typeof val === 'object' && val !== null) {
+        auditCopyObj(val, curPath);
+      }
+    }
+  }
+  auditCopyObj(CONTENT, 'CONTENT');
+  if (overCount > 0) {
+    console.error('Lines over 12 words: ' + overCount + ' -> ' + overExamples.join('; '));
+  }
+  assert(overCount === 0, 'All user-facing copy strings in CONTENT are 12 words or fewer per line');
+
   console.log('\n----------------------------------------------------');
   console.log('Test Summary: ' + passedTests + ' / ' + totalTests + ' passed (' + failedTests + ' failed)');
   console.log('----------------------------------------------------');

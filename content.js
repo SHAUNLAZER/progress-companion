@@ -44,7 +44,300 @@ const CONTENT = {
       text: "You have unsaved setup answers from earlier.",
       resume: "Continue",
       restart: "Start over"
+    },
+    placeholder: {
+      title: "Set up your routine first",
+      text: "Complete your quick setup to unlock this section.",
+      cta: "Set up my plan"
+    },
+    panels: [
+      {
+        step: "1",
+        title: "Set a goal",
+        text: "Choose one focus area and a realistic timeframe.",
+        detail: "About 1 minute."
+      },
+      {
+        step: "2",
+        title: "Check in daily",
+        text: "Follow your morning and evening ritual steps.",
+        detail: "10 seconds a day."
+      },
+      {
+        step: "3",
+        title: "See your results",
+        text: "Track tangible micro-markers week by week.",
+        detail: "Every week."
+      }
+    ]
+  },
+
+  /* ---- The Smart Fork (Section 1) ---- */
+  fork: {
+    question: "Do you already have a Bodywise product?",
+    why: "We tailor your setup so you never see redundant recommendations.",
+    options: [
+      {
+        id: "owned",
+        title: "Yes, I have it with me",
+        sub: "Set up your bathroom shelf and start your daily companion."
+      },
+      {
+        id: "exploring",
+        title: "No, I am exploring",
+        sub: "Discover targeted formulas on the official Be Bodywise website."
+      }
+    ],
+    discoveryHeader: "Curated Bodywise formulas",
+    discoverySub: "Explore targeted solutions backed by clinical actives.",
+    outboundBtn: "View on Be Bodywise",
+    hasOrderedBtn: "I have ordered. Take me to setup."
+  },
+
+  /* ---- Curated Discovery Catalog for New Visitors ---- */
+  discovery: [
+    {
+      concern: "hair",
+      title: "Hair growth & density",
+      product: "Advanced hair growth roll-on serum",
+      benefit: "Redensyl and Procapil to target shedding at the root.",
+      url: "https://bebodywise.com"
+    },
+    {
+      concern: "skin",
+      title: "Clear & balanced skin",
+      product: "Niacinamide and Salicylic acid facial serum",
+      benefit: "Regulates sebum, clears active acne and calms inflammation.",
+      url: "https://bebodywise.com"
+    },
+    {
+      concern: "bodyskin",
+      title: "Smoother body texture",
+      product: "Exfoliating AHA & BHA body wash",
+      benefit: "Gently smooths bumps, strawberry legs, and rough patches.",
+      url: "https://bebodywise.com"
+    },
+    {
+      concern: "pcos",
+      title: "Hormonal & cycle balance",
+      product: "Inositol daily drink & PCOS capsules",
+      benefit: "Supports natural ovulatory rhythm and steady daily energy.",
+      url: "https://bebodywise.com"
+    },
+    {
+      concern: "wellness",
+      title: "Everyday nourishment",
+      product: "Biotin hair & daily multivitamin gummies",
+      benefit: "Essential micronutrients to build long-term wellness baselines.",
+      url: "https://bebodywise.com"
     }
+  ],
+
+  /* ---- Daily Mindset & Motivation (14 rotating quotes) ---- */
+  mindsetQuotes: [
+    {
+      quote: "Physical change is cellular before it is visible. Trust the routine.",
+      author: "Biology truth"
+    },
+    {
+      quote: "Missing a day does not reset your skin barrier. Pick right up.",
+      author: "Gentle reminder"
+    },
+    {
+      quote: "Wellness is a daily relationship with yourself, not a deadline.",
+      author: "Steady mindset"
+    },
+    {
+      quote: "Hair follicles take 90 days to rest. Today builds month three.",
+      author: "Hair biology"
+    },
+    {
+      quote: "Small daily habits quietly transform cells before mirrors show it.",
+      author: "Quiet progress"
+    },
+    {
+      quote: "Consistency over perfection: showing up today protects your baseline.",
+      author: "Habit truth"
+    },
+    {
+      quote: "Biology moves on its own clock. Patience is an active ingredient.",
+      author: "Honest timeline"
+    },
+    {
+      quote: "Celebrate today's application. Small repetitions build lasting results.",
+      author: "Daily win"
+    },
+    {
+      quote: "Skin cells renew every 28 days. You are feeding tomorrow's layer.",
+      author: "Cellular renewal"
+    },
+    {
+      quote: "Focus on today's ritual. Let the biological calendar do the rest.",
+      author: "Calm focus"
+    },
+    {
+      quote: "Doubt is normal when change is gradual. Keep your hands steady.",
+      author: "Patience note"
+    },
+    {
+      quote: "True self-care is quiet and consistent. You are making real progress.",
+      author: "Daily reassurance"
+    },
+    {
+      quote: "Hormones respond to gentle stability, not sudden pressure. Stay steady.",
+      author: "Hormone harmony"
+    },
+    {
+      quote: "Trust the compounding power of small habits logged every single day.",
+      author: "Momentum note"
+    }
+  ],
+
+  /* ---- Objective Micro-Markers (replacing vague 1-5 feel) ---- */
+  microMarkers: {
+    hair: [
+      {
+        id: "drain",
+        name: "Shower drain test",
+        hint: "Observe loose hair accumulation during washing.",
+        options: [
+          { val: 1, label: "Noticeable clump", score: 1 },
+          { val: 2, label: "A few strands", score: 3 },
+          { val: 3, label: "Minimal loose hair", score: 5 }
+        ]
+      },
+      {
+        id: "comb",
+        name: "Pillow & comb check",
+        hint: "Count loose strands on pillow or brush in the morning.",
+        options: [
+          { val: 1, label: "Many loose strands", score: 1 },
+          { val: 2, label: "Occasional 2-3 hairs", score: 3 },
+          { val: 3, label: "Clean brush & pillow", score: 5 }
+        ]
+      }
+    ],
+    skin: [
+      {
+        id: "texture",
+        name: "Texture touch test",
+        hint: "Gently glide fingertips across cheeks and forehead.",
+        options: [
+          { val: 1, label: "Rough or bumpy", score: 1 },
+          { val: 2, label: "Smoothing out", score: 3 },
+          { val: 3, label: "Smooth & soft", score: 5 }
+        ]
+      },
+      {
+        id: "breakouts",
+        name: "Active flare-up count",
+        hint: "Count newly emerging tender blemishes this week.",
+        options: [
+          { val: 1, label: "Active new spots", score: 1 },
+          { val: 2, label: "Healing marks only", score: 3 },
+          { val: 3, label: "Calm & clear", score: 5 }
+        ]
+      }
+    ],
+    bodyskin: [
+      {
+        id: "texture",
+        name: "Body touch feel",
+        hint: "Check underarms or thighs for bumps or roughness.",
+        options: [
+          { val: 1, label: "Bumpy or dry", score: 1 },
+          { val: 2, label: "Gradually softening", score: 3 },
+          { val: 3, label: "Even & hydrated", score: 5 }
+        ]
+      }
+    ],
+    pcos: [
+      {
+        id: "energy",
+        name: "Daily energy stability",
+        hint: "Observe mid-afternoon energy levels and crash tendencies.",
+        options: [
+          { val: 1, label: "Heavy crashes", score: 1 },
+          { val: 2, label: "Moderate steady", score: 3 },
+          { val: 3, label: "Calm & energized", score: 5 }
+        ]
+      }
+    ],
+    wellness: [
+      {
+        id: "vitality",
+        name: "Morning freshness",
+        hint: "Note how refreshed you feel waking up.",
+        options: [
+          { val: 1, label: "Sluggish & groggy", score: 1 },
+          { val: 2, label: "Normal wakeup", score: 3 },
+          { val: 3, label: "Refreshed & ready", score: 5 }
+        ]
+      }
+    ]
+  },
+
+  /* ---- AM / PM Step-by-Step Daily Ritual Templates ---- */
+  ritualTemplates: {
+    hair: {
+      am: [
+        { id: "cleanse", text: "Wash scalp with lukewarm water" },
+        { id: "serum", text: "Apply roll-on serum to parted thinning zones" },
+        { id: "massage", text: "Gentle 60-second finger massage to absorb" }
+      ],
+      pm: [
+        { id: "brush", text: "Gentle wide-tooth comb to clear tangles" },
+        { id: "serum_pm", text: "Targeted drop application along hairline" },
+        { id: "pillow", text: "Rest on clean pillowcase" }
+      ]
+    },
+    skin: {
+      am: [
+        { id: "cleanse", text: "Wash with gentle foaming cleanser" },
+        { id: "treat", text: "Apply 3-4 drops of active serum" },
+        { id: "protect", text: "Layer broad-spectrum sunscreen lotion" }
+      ],
+      pm: [
+        { id: "cleanse_pm", text: "Cleanse away daily dust and sebum" },
+        { id: "repair", text: "Apply night barrier treatment cream" },
+        { id: "hydrate", text: "Drink a glass of water before sleep" }
+      ]
+    },
+    bodyskin: {
+      am: [
+        { id: "wash", text: "Use targeted active body cleanser in shower" },
+        { id: "moisturize", text: "Smooth urea or ceramide lotion onto damp skin" }
+      ],
+      pm: [
+        { id: "spot", text: "Apply roll-on care to target zones" }
+      ]
+    },
+    pcos: {
+      am: [
+        { id: "supplement", text: "Take daily inositol or capsules with breakfast" },
+        { id: "hydrate", text: "Hydrate with 500ml water" }
+      ],
+      pm: [
+        { id: "winddown", text: "Quiet 10-minute winddown before sleep" }
+      ]
+    },
+    wellness: {
+      am: [
+        { id: "gummy", text: "Chew daily multivitamin gummy with food" },
+        { id: "water", text: "Start day with warm water" }
+      ],
+      pm: [
+        { id: "rest", text: "Maintain regular sleep timing" }
+      ]
+    }
+  },
+
+  /* ---- Bottle Burn-Rate Copy ---- */
+  burnRate: {
+    title: "Bottle burn rate",
+    usedLabel: "Doses used",
+    daysLeftLabel: "Estimated days left",
+    reorderAlert: "5 days of product left. Time to restock."
   },
 
   /* ---- Positive customer insights ---- */
@@ -586,6 +879,16 @@ const CONTENT = {
     title: "Memory",
     weeksAgo: "{weeks} weeks ago you wrote",
     scoreChange: "Starting point was {start}/5. Today it is {current}/5"
+  },
+
+  /* ---- Closing and Footer ---- */
+  closing: {
+    title: "Small steps, every day",
+    text: "Real change takes time. Your body is doing the quiet work."
+  },
+  footer: {
+    line: "Built for quiet daily consistency.",
+    privacy: "Private. Saved only on your device."
   },
 
   version: "3.0.0"
