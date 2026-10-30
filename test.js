@@ -745,6 +745,29 @@
   assert(appCode.indexOf('header-store-pill') !== -1, 'Header includes Shop Official Formulas pill');
   assert(appCode.indexOf('https://bebodywise.com') !== -1, 'Official bebodywise.com links configured');
 
+  // 30. Cinematic Brand Intro & Logo Story Animation
+  console.log('\nSuite 30: Cinematic Brand Intro & Logo Story Animation');
+  var indexHtmlCode = '';
+  var styleCssCode = '';
+  if (isNode) {
+    indexHtmlCode = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+    styleCssCode = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
+  }
+  assert(indexHtmlCode.indexOf('id="intro-stage"') !== -1, 'index.html contains #intro-stage lilac stage');
+  assert(indexHtmlCode.indexOf('id="intro-skip-btn"') !== -1, 'index.html contains #intro-skip-btn');
+  assert(indexHtmlCode.indexOf('id="intro-stroke-b"') !== -1, 'index.html contains handwritten B draw path');
+  assert(indexHtmlCode.indexOf('id="intro-stroke-w"') !== -1, 'index.html contains handwritten W draw path');
+  assert(indexHtmlCode.indexOf('id="intro-final-figure"') !== -1, 'index.html contains assembled final figure logo');
+  assert(indexHtmlCode.indexOf('id="intro-wordmark"') !== -1, 'index.html contains Bodywise wordmark element');
+  assert(appCode.indexOf('function initIntroAnimation') !== -1, 'app.js defines initIntroAnimation controller');
+  assert(appCode.indexOf('window.replayIntro') !== -1, 'app.js defines window.replayIntro method');
+  assert(styleCssCode.indexOf('.intro-stage') !== -1, 'style.css defines .intro-stage styling');
+  assert(styleCssCode.indexOf('.intro-draw-path') !== -1, 'style.css defines .intro-draw-path SVG stroke animation');
+  assert(styleCssCode.indexOf('.intro-final-figure') !== -1, 'style.css defines .intro-final-figure reveal and settle');
+  assert(styleCssCode.indexOf('.intro-wordmark') !== -1, 'style.css defines .intro-wordmark fade and rise');
+  assert(styleCssCode.indexOf('.intro-canvas.docking') !== -1, 'style.css defines .intro-canvas.docking navbar gliding');
+  assert(styleCssCode.indexOf('.how-panels-row') !== -1, 'style.css defines .how-panels-row grid');
+
   console.log('\n----------------------------------------------------');
   console.log('Test Summary: ' + passedTests + ' / ' + totalTests + ' passed (' + failedTests + ' failed)');
   console.log('----------------------------------------------------');

@@ -3,7 +3,7 @@
    Caches static assets for reliable offline daily tracking.
    ============================================================ */
 
-const CACHE_NAME = 'progress-companion-v5';
+const CACHE_NAME = 'progress-companion-v6';
 const ASSETS = [
   './',
   './index.html',

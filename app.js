@@ -1979,7 +1979,7 @@ UI.renderHeader = function () {
 
   var html = '<div class="header-inner">' +
     // Brand Logo with Fluid Line-Art Guide Avatar (Zero duplicate word "Companion")
-    '<a href="#companion" class="header-brand" data-scroll="companion">' +
+    '<a href="#companion" class="header-brand" id="brand-logo" data-scroll="companion" title="Be Bodywise — Click with Shift to replay intro">' +
       '<span class="guide-avatar-badge">' + ICONS.guideAvatar + '</span>' +
       '<span class="brand-name">' + escHTML(CONTENT.brand || 'Be Bodywise') + '</span>' +
     '</a>' +
@@ -1995,7 +1995,7 @@ UI.renderHeader = function () {
 
     // Header Actions
     '<div class="header-actions">' +
-      '<a href="https://bebodywise.com" target="_blank" rel="noopener" class="header-store-pill" title="Shop Official Bodywise Formulas">' +
+      '<a href="https://bebodywise.com" target="_blank" rel="noopener" class="header-shop-btn header-store-pill" title="Shop Official Bodywise Formulas">' +
         '<span>Shop Official Formulas</span>' +
         '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>' +
       '</a>' +
@@ -3599,6 +3599,12 @@ function openChatbotDrawer(initialTopicId) {
 // 2. Settings & Menu Drawer with In-Drawer Reset Confirmation
 function openSettingsDrawer() {
   var html = '<div class="card mb-16">' +
+    '<h3 class="card-title" style="font-size:1rem;margin-bottom:8px;">Brand Intro</h3>' +
+    '<p class="card-text mb-12" style="font-size:0.88rem;">Watch the 6-second lilac handwritten logo story animation.</p>' +
+    '<button type="button" class="btn btn-secondary btn-sm" id="btn-replay-intro">Replay Brand Intro</button>' +
+  '</div>' +
+
+  '<div class="card mb-16">' +
     '<h3 class="card-title" style="font-size:1rem;margin-bottom:8px;">Data & Backup</h3>' +
     '<p class="card-text mb-12" style="font-size:0.88rem;">All your data is saved privately in your browser.</p>' +
     '<div style="display:flex;gap:10px;">' +
@@ -3623,6 +3629,16 @@ function openSettingsDrawer() {
   '</div>';
 
   Drawer.open('Settings & Options', html, function (panelEl) {
+    var replayBtn = panelEl.querySelector('#btn-replay-intro');
+    if (replayBtn) {
+      replayBtn.addEventListener('click', function () {
+        Drawer.close();
+        if (typeof window.replayIntro === 'function') {
+          window.replayIntro();
+        }
+      });
+    }
+
     var exportBtn = panelEl.querySelector('#btn-export-json');
     if (exportBtn) {
       exportBtn.addEventListener('click', function () {
@@ -3861,9 +3877,112 @@ function renderAllSections() {
   }
 }
 
+/* ==================== BRAND INTRO ANIMATION CONTROLLER ==================== */
+function initIntroAnimation() {
+  var introEl = document.getElementById('intro-stage');
+  if (!introEl) return;
+
+  var skipBtn = document.getElementById('intro-skip-btn');
+  var finalFigure = document.getElementById('intro-final-figure');
+  var wordmark = document.getElementById('intro-wordmark');
+  var canvas = document.getElementById('intro-canvas');
+  var animTimer1 = null;
+  var animTimer2 = null;
+  var animTimer3 = null;
+
+  function clearTimers() {
+    if (animTimer1) clearTimeout(animTimer1);
+    if (animTimer2) clearTimeout(animTimer2);
+    if (animTimer3) clearTimeout(animTimer3);
+  }
+
+  function dismissIntro(skipAnimation) {
+    clearTimers();
+    try { sessionStorage.setItem('bwc_intro_seen', 'true'); } catch (e) {}
+    if (skipAnimation) {
+      introEl.classList.add('dismissed');
+      introEl.setAttribute('aria-hidden', 'true');
+      return;
+    }
+    if (canvas) canvas.classList.add('docking');
+    setTimeout(function () {
+      introEl.classList.add('dismissed');
+      introEl.setAttribute('aria-hidden', 'true');
+      setTimeout(function () {
+        if (canvas) canvas.classList.remove('docking');
+      }, 900);
+    }, 600);
+  }
+
+  window.replayIntro = function () {
+    clearTimers();
+    try { sessionStorage.removeItem('bwc_intro_seen'); } catch (e) {}
+    introEl.classList.remove('dismissed');
+    introEl.setAttribute('aria-hidden', 'false');
+    if (finalFigure) finalFigure.classList.remove('revealed');
+    if (wordmark) wordmark.classList.remove('revealed');
+    if (canvas) canvas.classList.remove('docking');
+    runSequence();
+  };
+
+  if (skipBtn) {
+    skipBtn.addEventListener('click', function () {
+      dismissIntro(true);
+    });
+  }
+
+  // Brand logo in header can replay intro
+  var brandLogo = document.getElementById('brand-logo');
+  if (brandLogo) {
+    brandLogo.addEventListener('click', function (e) {
+      if (e.shiftKey) {
+        e.preventDefault();
+        window.replayIntro();
+      }
+    });
+  }
+
+  // Check prefers-reduced-motion
+  if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    dismissIntro(true);
+    return;
+  }
+
+  // Check if intro has already played in this session
+  var alreadySeen = false;
+  try { alreadySeen = (sessionStorage.getItem('bwc_intro_seen') === 'true'); } catch (e) {}
+  if (alreadySeen) {
+    dismissIntro(true);
+    return;
+  }
+
+  function runSequence() {
+    // 0ms: Soft lilac backdrop visible, stroke B is drawing
+    // 1200ms: Plus draws
+    // 1600ms: W draws
+    // 3600ms: B and W glide together to center; curves unfurl, arms sweep out, head pops in -> final figure revealed!
+    animTimer1 = setTimeout(function () {
+      if (finalFigure) finalFigure.classList.add('revealed');
+    }, 3600);
+
+    // 4800ms: Finished logo holds for a beat with a gentle settle, and the "Bodywise" wordmark fades in
+    animTimer2 = setTimeout(function () {
+      if (wordmark) wordmark.classList.add('revealed');
+    }, 4800);
+
+    // 6200ms: Logo shrinks and glides into top-left of nav bar while backdrop lifts away
+    animTimer3 = setTimeout(function () {
+      dismissIntro(false);
+    }, 6200);
+  }
+
+  runSequence();
+}
+
 /* ==================== INIT ==================== */
 function init() {
   renderAllSections();
+  initIntroAnimation();
 
   var currentRenderedDate = Utils.getToday();
   function checkMidnightRollover() {
