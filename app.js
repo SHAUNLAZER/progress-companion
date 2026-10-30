@@ -2863,10 +2863,15 @@ function renderCheckinSection(container) {
     '</div>' +
 
     // Daily Mindset & Motivation Card
-    '<div class="mindset-card mb-24">' +
-      '<div class="mindset-badge">Daily mindset</div>' +
-      '<div class="mindset-quote">' + escHTML(mindset.quote) + '</div>' +
-      '<div class="mindset-author">' + escHTML(mindset.author) + '</div>' +
+    '<div class="mindset-card mb-24" id="daily-mindset-card" role="button" tabindex="0" title="Click for another daily reassurance" style="cursor:pointer;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+        '<div class="mindset-badge">Daily mindset</div>' +
+        '<span class="mindset-card-shuffle-hint">' +
+          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg> Tap to shuffle' +
+        '</span>' +
+      '</div>' +
+      '<div class="mindset-quote" id="mindset-quote-text" style="transition:opacity 0.2s ease;">' + escHTML(mindset.quote) + '</div>' +
+      '<div class="mindset-author" id="mindset-author-text" style="transition:opacity 0.2s ease;">' + escHTML(mindset.author) + '</div>' +
     '</div>' +
 
     '<div class="checkin-grid">' +
@@ -2937,6 +2942,30 @@ function renderCheckinSection(container) {
   container.innerHTML = html;
 
   // Independent Step Clicks (Clicking toggles ONLY that step)
+  
+  var currentQuoteIdx = 0;
+  var mindsetCardEl = container.querySelector('#daily-mindset-card');
+  if (mindsetCardEl) {
+    mindsetCardEl.addEventListener('click', function () {
+      var quotes = CONTENT.mindsetQuotes || [];
+      if (!quotes.length) return;
+      currentQuoteIdx = (currentQuoteIdx + 1) % quotes.length;
+      var nextQ = quotes[currentQuoteIdx];
+      var qText = container.querySelector('#mindset-quote-text');
+      var qAuth = container.querySelector('#mindset-author-text');
+      if (qText && qAuth) {
+        qText.style.opacity = '0';
+        qAuth.style.opacity = '0';
+        setTimeout(function () {
+          qText.textContent = nextQ.quote;
+          qAuth.textContent = nextQ.author;
+          qText.style.opacity = '1';
+          qAuth.style.opacity = '1';
+        }, 150);
+      }
+    });
+  }
+
   container.querySelectorAll('.ritual-step-item').forEach(function (item) {
     item.addEventListener('click', function () {
       var stepId = item.getAttribute('data-step-id');
@@ -3189,6 +3218,37 @@ function renderTimelineSection(container) {
     }, 50);
   }
 
+  // Horizontal drag and scroll listeners
+  var wrapperEl = container.querySelector('.timeline-scrubber-wrapper');
+  if (wrapperEl) {
+    wrapperEl.addEventListener('scroll', function () {
+      var curActive = container.querySelector('.interactive-week-card.scrub-active');
+      if (curActive && arrowEl && cardEl) {
+        var cardRect = cardEl.getBoundingClientRect();
+        var activeRect = curActive.getBoundingClientRect();
+        var centerRelative = (activeRect.left + activeRect.width / 2) - cardRect.left;
+        var clampCenter = Math.max(24, Math.min(cardRect.width - 24, centerRelative));
+        arrowEl.style.left = clampCenter + 'px';
+      }
+    }, { passive: true });
+
+    var isDragDown = false;
+    var startDragX = 0;
+    var startScrollLeft = 0;
+    wrapperEl.addEventListener('mousedown', function (e) {
+      isDragDown = true;
+      startDragX = e.pageX - wrapperEl.offsetLeft;
+      startScrollLeft = wrapperEl.scrollLeft;
+    });
+    window.addEventListener('mouseup', function () { isDragDown = false; });
+    wrapperEl.addEventListener('mousemove', function (e) {
+      if (!isDragDown) return;
+      var x = e.pageX - wrapperEl.offsetLeft;
+      var walk = (x - startDragX) * 1.5;
+      wrapperEl.scrollLeft = startScrollLeft - walk;
+    });
+  }
+
   // Scrub listeners on cards
   container.querySelectorAll('.interactive-week-card').forEach(function (card) {
     card.addEventListener('mouseenter', function () {
@@ -3235,12 +3295,11 @@ function renderMindSection(container) {
 
         '<div class="breathing-circle-wrapper">' +
           '<div class="breathing-circle-track"></div>' +
-          '<div class="breathing-circle-core" id="breathing-core">' +
-            '<span id="breathing-label">Ready</span>' +
+          '<div class="breathing-circle-core" id="breathing-core" role="button" tabindex="0" title="Tap circle to start or pause breathing">' +
+            '<span id="breathing-label" style="font-weight:700;">Tap to start</span>' +
           '</div>' +
         '</div>' +
-
-        '<button type="button" class="btn btn-primary" id="btn-toggle-breathing">' + escHTML(mind.breathing.btnStart) + '</button>' +
+        '<p style="font-size:0.84rem;color:#0B5E9E;margin-top:14px;font-weight:600;text-align:center;">Tap circle to start / pause</p>' +
       '</div>' +
 
       // 2. Daily Grounding Affirmation Card
@@ -3361,74 +3420,150 @@ function renderResultsSection(container) {
       '<div class="card text-center" style="max-width:540px;margin:0 auto;padding:36px 24px;">' +
         '<h3 class="card-title mb-8">' + escHTML(p.title) + '</h3>' +
         '<p class="card-text mb-20">' + escHTML(p.text) + '</p>' +
-        '<button type="button" class="btn btn-primary" data-scroll="setup">' + escHTML(p.cta) + '</button>' +
+        '<button type="button" class="btn btn-primary" data-scroll="today">' + escHTML(p.cta) + '</button>' +
       '</div>' +
     '</div>';
-    container.querySelector('[data-scroll]').addEventListener('click', function (e) {
-      e.preventDefault();
-      scrollToSection('setup');
-    });
     return;
   }
 
   var verdict = Utils.getVerdict(profile);
   var currentWk = Utils.getWeekNumber(profile.startDate);
+  var cfg = Utils.getConcernConfig(profile.concern);
+  var consistencyPct = Math.round(Utils.getConsistency(profile, 30) * 100);
+  var streakDays = Utils.getStreak(profile);
   var markersList = (CONTENT.microMarkers && CONTENT.microMarkers[profile.concern]) || [];
+
+  // Dial calculations (radius = 38, circumference = 238.76)
+  var circ = 238.76;
+  var dashoffset = circ - (circ * (consistencyPct / 100));
 
   var html = '<div class="container">' +
     '<div class="section-header">' +
-      '<h2 class="section-title">Your results</h2>' +
-      '<p class="section-subline">Tangible physical micro-markers · Week ' + currentWk + '</p>' +
+      '<h2 class="section-title">Your Progress & Biological Results</h2>' +
+      '<p class="section-subline">Deep clinical analysis &middot; Week ' + currentWk + ' of ' + cfg.fullWindowWeeks + ' &middot; ' + escHTML(cfg.label) + ' Routine</p>' +
     '</div>' +
 
-    '<div class="results-grid">' +
-      // Left Column: Biology Verdict Card
-      '<div class="results-left-col">' +
-        '<div class="card ' + escHTML(verdict.cssClass) + ' mb-20" style="padding:28px 24px;">' +
-          '<div class="badge mb-8" style="background:#fff;font-weight:700;">' + escHTML(verdict.label) + '</div>' +
-          '<h3 class="card-title" style="font-size:1.35rem;margin-bottom:8px;">' + escHTML(verdict.label) + '</h3>' +
-          '<p class="card-text mb-16" style="font-size:1.02rem;">' + escHTML(verdict.message) + '</p>' +
-          '<ul style="margin:0;padding-left:18px;font-size:0.88rem;color:var(--text-secondary);">' +
-            verdict.reasons.map(function (r) { return '<li>' + escHTML(r) + '</li>'; }).join('') +
-          '</ul>' +
+    '<div class="results-bento-grid">' +
+      // Card 1: 30-Day Consistency Velocity Dial (Span 5)
+      '<div class="results-bento-card results-bento-span-5">' +
+        '<div class="badge badge-blue mb-12">Consistency Velocity</div>' +
+        '<div class="results-score-dial-wrap">' +
+          '<svg class="results-score-dial-svg" viewBox="0 0 100 100">' +
+            '<circle class="results-score-dial-bg" cx="50" cy="50" r="38" />' +
+            '<circle class="results-score-dial-val" cx="50" cy="50" r="38" stroke-dasharray="' + circ + '" stroke-dashoffset="' + dashoffset + '" />' +
+          '</svg>' +
+          '<div>' +
+            '<div style="font-size:2rem;font-weight:800;color:#0F2D5E;line-height:1;">' + consistencyPct + '%</div>' +
+            '<div style="font-size:0.86rem;color:#64748B;margin-top:4px;">30-day routine adherence</div>' +
+            '<div style="margin-top:8px;">' +
+              '<span class="results-delta-pill ' + (consistencyPct >= 70 ? 'positive' : 'neutral') + '">' +
+                (consistencyPct >= 70 ? '&#9650; Optimal Saturation' : '&#9644; Building Momentum') +
+              '</span>' +
+            '</div>' +
+          '</div>' +
         '</div>' +
-
-        '<button type="button" class="btn btn-primary" id="btn-log-micromarkers">' +
-          'Record weekly micro-marker check \u2192' +
-        '</button>' +
+        '<div style="margin-top:18px;padding-top:14px;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between;font-size:0.86rem;">' +
+          '<span style="color:#64748B;">Current active streak:</span>' +
+          '<strong style="color:#0B5E9E;">' + streakDays + ' continuous days</strong>' +
+        '</div>' +
       '</div>' +
 
-      // Right Column: Micro-marker Guide
-      '<div class="results-right-col">' +
-        '<div class="card">' +
-          '<h3 class="card-title" style="font-size:1.1rem;margin-bottom:8px;">Observable signs for ' + escHTML(profile.concern) + '</h3>' +
-          '<div style="display:flex;flex-direction:column;gap:14px;margin-top:12px;">';
+      // Card 2: Biological Phase Verdict & Cellular State (Span 7)
+      '<div class="results-bento-card results-bento-span-7 ' + escHTML(verdict.cssClass) + '">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+          '<div class="badge mb-0" style="background:#FFFFFF;font-weight:700;">' + escHTML(verdict.label) + '</div>' +
+          '<span style="font-size:0.82rem;font-weight:600;color:#0B5E9E;">Phase Status</span>' +
+        '</div>' +
+        '<h3 class="card-title" style="font-size:1.2rem;margin-bottom:6px;">' + escHTML(verdict.label) + '</h3>' +
+        '<p class="card-text mb-12" style="font-size:0.92rem;line-height:1.5;">' + escHTML(verdict.message) + '</p>' +
+        '<div class="results-horizon-track">' +
+          '<div class="results-horizon-fill" style="width:' + Math.min(100, Math.round((currentWk / cfg.fullWindowWeeks) * 100)) + '%;"></div>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#64748B;margin-bottom:12px;">' +
+          '<span>Week 1 (Baseline)</span>' +
+          '<span>Week ' + cfg.earlyWindowWeeks + ' (Early shifts)</span>' +
+          '<span>Week ' + cfg.fullWindowWeeks + ' (Real change)</span>' +
+        '</div>' +
+        '<ul style="margin:0;padding-left:18px;font-size:0.85rem;color:#475569;">' +
+          verdict.reasons.map(function (r) { return '<li>' + escHTML(r) + '</li>'; }).join('') +
+        '</ul>' +
+      '</div>' +
+
+      // Card 3: Observable Micro-Marker Comparison Matrix (Span 12)
+      '<div class="results-bento-card results-bento-span-12">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">' +
+          '<div>' +
+            '<h3 class="card-title" style="font-size:1.1rem;margin-bottom:2px;">Observable Micro-Marker Comparison Matrix</h3>' +
+            '<p class="card-text" style="font-size:0.86rem;color:#64748B;">Tangible physical indicators for ' + escHTML(cfg.label) + ' care</p>' +
+          '</div>' +
+          '<button type="button" class="btn btn-primary btn-sm" id="btn-log-micromarkers">' +
+            'Record Weekly Observation &rarr;' +
+          '</button>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:12px;">';
 
   markersList.forEach(function (m) {
-    html += '<div class="micro-marker-card">' +
-      '<div style="font-weight:700;color:var(--deep-navy);margin-bottom:4px;">' + escHTML(m.name) + '</div>' +
-      '<p style="font-size:0.86rem;color:var(--text-secondary);margin-bottom:8px;">' + escHTML(m.hint) + '</p>' +
-      '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+    html += '<div class="results-matrix-row">' +
+      '<div style="flex:1;">' +
+        '<div style="font-weight:700;color:#0F2D5E;font-size:0.92rem;">' + escHTML(m.name) + '</div>' +
+        '<div style="font-size:0.8rem;color:#64748B;margin-top:2px;">' + escHTML(m.hint) + '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:4px;flex-shrink:0;">' +
         m.options.map(function (opt) {
-          return '<span class="tag-chip morning" style="font-size:0.75rem;">' + escHTML(opt.label) + '</span>';
+          return '<span class="tag-chip morning" style="font-size:0.72rem;padding:2px 8px;">' + escHTML(opt.label) + '</span>';
         }).join('') +
       '</div>' +
     '</div>';
   });
 
-  html += '</div></div></div>' +
+  html += '</div></div>' +
+
+      // Card 4: Formula Refill & Longevity Forecast (Span 6)
+      '<div class="results-bento-card results-bento-span-6">' +
+        '<div class="badge badge-blue mb-10">Formula Longevity Forecast</div>' +
+        '<h3 class="card-title" style="font-size:1.05rem;margin-bottom:8px;">Active Shelf Supply</h3>' +
+        '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">' +
+          (profile.products || []).map(function (prod) {
+            var daysLeft = Utils.getDaysLeft(prod);
+            var reorder = Utils.getReorderDate(prod);
+            var statusStr = (daysLeft !== null) ? (daysLeft > 0 ? (daysLeft + ' days left') : 'Refill due') : '30-day cycle';
+            return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0;font-size:0.86rem;">' +
+              '<span style="font-weight:600;color:#0F172A;">' + escHTML(prod.name) + '</span>' +
+              '<span style="font-weight:700;color:#0B5E9E;">' + statusStr + '</span>' +
+            '</div>';
+          }).join('') +
+        '</div>' +
+        '<a href="https://bebodywise.com" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" style="text-align:center;display:block;">' +
+          'Refill Official Formulas on Be Bodywise &rarr;' +
+        '</a>' +
+      '</div>' +
+
+      // Card 5: Biological Truth & Grounding Reflection (Span 6)
+      '<div class="results-bento-card results-bento-span-6">' +
+        '<div class="badge badge-blue mb-10">Clinical Truth</div>' +
+        '<h3 class="card-title" style="font-size:1.05rem;margin-bottom:6px;">Quiet Compounding Care</h3>' +
+        '<p class="card-text mb-12" style="font-size:0.88rem;color:#475569;line-height:1.5;">' +
+          'Surface changes follow weeks of cellular synthesis. Daily application saturates active nutrients before mirrors reveal visible density or barrier renewal.' +
+        '</p>' +
+        '<div style="background:#EFF6FF;padding:12px 14px;border-radius:12px;border:1px solid #BFDBFE;">' +
+          '<div style="font-weight:700;color:#1E40AF;font-size:0.84rem;margin-bottom:2px;">Pro-Tip for Week ' + currentWk + ':</div>' +
+          '<div style="font-size:0.82rem;color:#1E3A8A;">Do not switch products mid-cycle. True biological efficacy requires uninterrupted 60-to-90-day consistency.</div>' +
+        '</div>' +
+      '</div>' +
+
     '</div>' +
   '</div>';
 
   container.innerHTML = html;
 
-  var logMarkerBtn = document.getElementById('btn-log-micromarkers');
-  if (logMarkerBtn) {
-    logMarkerBtn.addEventListener('click', function () {
+  var logBtn = container.querySelector('#btn-log-micromarkers');
+  if (logBtn) {
+    logBtn.addEventListener('click', function () {
       openWeeklyReviewDrawer();
     });
   }
 }
+
 
 /* ---- Section 8: Next Step & Bottle Burn-Rate ---- */
 function renderNextStepSection(container) {
@@ -3923,13 +4058,14 @@ function renderDesktopRail() {
   var isCiDone = Utils.isCheckedInToday(profile);
   var isRevDue = Utils.isWeeklyRatingDue(profile);
 
+  // Requirement 4: Desktop Rail Navigation Order
   var steps = [
-    { id: 'setup', label: 'Bathroom shelf', done: true },
     { id: 'today', label: 'Daily ritual', done: isCiDone },
     { id: 'timeline', label: 'Timeline', done: true },
     { id: 'mind', label: 'Mind Space', done: false },
     { id: 'results', label: 'Results', done: !isRevDue },
-    { id: 'decide', label: 'Next step', done: false }
+    { id: 'setup', label: 'Bathroom shelf', done: true },
+    { id: 'nextstep', label: 'Next step', done: false }
   ];
 
   var html = '<div class="rail-stepper">' +
@@ -3960,6 +4096,17 @@ function renderDesktopRail() {
   });
 }
 
+/* ---- Site Footer ---- */
+function renderSiteFooter() {
+  var footEl = document.getElementById('site-footer');
+  if (!footEl) return;
+  var f = CONTENT.footer || { line: "Built for quiet daily consistency.", privacy: "Private. Saved only on your device." };
+  footEl.innerHTML = '<div class="container">' +
+    '<p style="margin-bottom:4px;">' + escHTML(f.line) + '</p>' +
+    '<p class="muted" style="font-size:0.8rem;">' + escHTML(f.privacy) + '</p>' +
+  '</div>';
+}
+
 /* ==================== ROOT RENDERING ==================== */
 function renderAllSections() {
   UI.renderHeader();
@@ -3967,83 +4114,58 @@ function renderAllSections() {
   var contentEl = document.getElementById('app-content');
   if (!contentEl) return;
 
-  var currentStructure = contentEl.querySelector('#companion');
-  if (!currentStructure) {
-    var structureHtml = '<div id="desktop-rail" aria-label="Quick jump rail"></div>' +
-      '<div class="sections-wrapper">';
-    SECTIONS.forEach(function (sec) {
-      structureHtml += '<section id="' + sec.id + '" class="app-section section-' + sec.id + '"></section>';
-    });
-    structureHtml += '<footer id="site-footer" class="site-footer"></footer>';
-    structureHtml += '</div>';
+  var profile = Storage.load();
+  contentEl.innerHTML = '';
 
-    structureHtml += '<div id="app-drawer" class="drawer-overlay" aria-hidden="true">' +
-      '<div id="drawer-backdrop" class="drawer-backdrop"></div>' +
-      '<div id="drawer-panel" class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title">' +
-        '<div class="drawer-header">' +
-          '<h2 class="drawer-title" id="drawer-title"></h2>' +
-          '<button type="button" class="drawer-close" id="drawer-close" aria-label="Close dialog">&times;</button>' +
-        '</div>' +
-        '<div class="drawer-body" id="drawer-body"></div>' +
+  var structureHtml = '<div id="desktop-rail" aria-label="Quick jump rail"></div>' +
+    '<div class="sections-wrapper">';
+
+  // Requirement 3: When profile exists: Daily Ritual (#today) is the TOP section!
+  // Bathroom Shelf (#setup) is in the end portion!
+  var sectionOrder = profile
+    ? ['today', 'timeline', 'mind', 'results', 'setup', 'companion', 'how', 'nextstep', 'closing']
+    : ['companion', 'how', 'setup', 'today', 'timeline', 'mind', 'results', 'nextstep', 'closing'];
+
+  sectionOrder.forEach(function (secId) {
+    structureHtml += '<section id="' + secId + '" class="app-section section-' + secId + '"></section>';
+  });
+  structureHtml += '<footer id="site-footer" class="site-footer"></footer>';
+  structureHtml += '</div>';
+
+  structureHtml += '<div id="app-drawer" class="drawer-overlay" aria-hidden="true">' +
+    '<div id="drawer-backdrop" class="drawer-backdrop"></div>' +
+    '<div id="drawer-panel" class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title">' +
+      '<div class="drawer-header">' +
+        '<h2 class="drawer-title" id="drawer-title"></h2>' +
+        '<button type="button" class="drawer-close-btn" id="drawer-close" aria-label="Close panel">' +
+          '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+        '</button>' +
       '</div>' +
-    '</div>';
+      '<div class="drawer-body" id="drawer-body"></div>' +
+    '</div>' +
+  '</div>';
 
-    structureHtml += '<div id="toast" class="toast" role="status" aria-live="polite"></div>';
+  contentEl.innerHTML = structureHtml;
 
-    contentEl.innerHTML = structureHtml;
-  }
+  var drawerClose = document.getElementById('drawer-close');
+  var drawerBackdrop = document.getElementById('drawer-backdrop');
+  if (drawerClose) drawerClose.addEventListener('click', function () { Drawer.close(); });
+  if (drawerBackdrop) drawerBackdrop.addEventListener('click', function () { Drawer.close(); });
 
   // Render each section
   SECTIONS.forEach(function (sec) {
-    var secEl = document.getElementById(sec.id);
-    if (secEl && typeof sec.render === 'function') {
-      sec.render(secEl);
+    var secContainer = contentEl.querySelector('#' + sec.id);
+    if (secContainer && typeof sec.render === 'function') {
+      sec.render(secContainer);
     }
   });
 
   renderDesktopRail();
   renderSiteFooter();
-
-  // Tab bar click binding
-  var tabBar = document.getElementById('tab-bar');
-  if (tabBar) {
-    tabBar.querySelectorAll('[data-scroll]').forEach(function (el) {
-      el.addEventListener('click', function (e) {
-        e.preventDefault();
-        var target = el.getAttribute('data-scroll');
-        scrollToSection(target);
-      });
-    });
-  }
-
-  // Floating Chatbot button
-  var floatingGuideBtn = document.getElementById('guide-floating-btn');
-  if (floatingGuideBtn) {
-    floatingGuideBtn.addEventListener('click', function () {
-      openChatbotDrawer();
-    });
-  }
-
-  // Drawer close bindings
-  var drawerClose = document.getElementById('drawer-close');
-  var drawerBackdrop = document.getElementById('drawer-backdrop');
-  if (drawerClose) drawerClose.addEventListener('click', function () { Drawer.close(); });
-  if (drawerBackdrop) drawerBackdrop.addEventListener('click', function () { Drawer.close(); });
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') Drawer.close();
-  });
-
-  initScrollspy();
-
-  var initialHash = (window.location.hash || '').replace(/^#[/]*/, '');
-  if (initialHash && document.getElementById(initialHash)) {
-    setTimeout(function () {
-      scrollToSection(initialHash);
-    }, 100);
-  }
+  UI.initScrollSpy();
 }
 
-/* ==================== CINEMATIC BRAND INTRO & BEE ONBOARDING CONTROLLER ==================== */
+/* ==================== INTRO ANIMATION & MULTI-CONCERN BEE ONBOARDING ==================== */
 function initIntroAnimation() {
   var introEl = document.getElementById('intro-stage');
   if (!introEl) return;
@@ -4057,12 +4179,16 @@ function initIntroAnimation() {
   var canvasEl = document.getElementById('intro-canvas');
   var beeStageEl = document.getElementById('bee-onboarding-stage');
 
+  // Multi-Concern Interview State
   var beeState = {
     step: 0,
     name: '',
-    concern: 'hair',
-    ownedProducts: [],
-    routineTime: 'morning',
+    concerns: ['hair'],
+    currentConcernIdx: 0,
+    concernSubstep: 'shelf', // 'shelf' or 'timing'
+    concernsData: {
+      hair: { products: [], time: 'morning' }
+    },
     startBucket: 'notYet'
   };
 
@@ -4163,7 +4289,7 @@ function initIntroAnimation() {
         '</div>' +
       '</div>';
     } else if (step === 1) {
-      // Step 1: Concern Focus
+      // Step 1: Multi-Select Wellness Focus Areas
       stepHtml = '<div class="bee-character-card">' +
         '<div class="bee-steps-indicator">' +
           '<span class="bee-step-dot active"></span>' +
@@ -4174,348 +4300,414 @@ function initIntroAnimation() {
         '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
         '<div class="bee-speech-bubble">' +
           '<h3 class="bee-greeting-title">Nice to meet you, ' + escHTML(beeState.name) + '!</h3>' +
-          '<p class="bee-greeting-sub">What is your primary wellness focus right now?</p>' +
+          '<p class="bee-greeting-sub">Select every wellness area you want to care for right now.</p>' +
         '</div>' +
         '<div class="bee-options-grid">' +
           CONTENT.quiz.concerns.map(function (c) {
-            var isSel = (beeState.concern === c.value);
+            var isSel = (beeState.concerns.indexOf(c.value) >= 0);
             return '<button type="button" class="bee-choice-btn' + (isSel ? ' selected' : '') + '" data-concern="' + c.value + '">' +
               '<span class="bee-choice-title">' + escHTML(c.label) + '</span>' +
               '<span class="bee-choice-desc">Personalized biological timeline</span>' +
+              (isSel ? '<span class="bee-check-badge">&#10003;</span>' : '') +
             '</button>';
           }).join('') +
         '</div>' +
         '<div style="display:flex;justify-content:space-between;width:100%;margin-top:10px;">' +
           '<button type="button" class="btn btn-secondary btn-sm" id="bee-prev">Back</button>' +
-          '<button type="button" class="btn btn-primary btn-sm" id="bee-next-focus">Next step &rarr;</button>' +
+          '<button type="button" class="btn btn-primary btn-sm" id="bee-next-focus">Next: Focus Details &rarr;</button>' +
         '</div>' +
       '</div>';
     } else if (step === 2) {
-      // Step 2: Owned Formulas Checklist
-      var catalog = CONTENT.catalog[beeState.concern] || [];
+      // Step 2: Sequential In-Depth Loops for Each Selected Concern
+      var currentConcernKey = beeState.concerns[beeState.currentConcernIdx] || 'hair';
+      var concernLabel = (Utils.getConcernConfig(currentConcernKey) && Utils.getConcernConfig(currentConcernKey).label) || currentConcernKey;
+      var totalConcerns = beeState.concerns.length;
+      var curData = beeState.concernsData[currentConcernKey] || { products: [], time: 'morning' };
+
+      if (beeState.concernSubstep === 'shelf') {
+        var catalog = CONTENT.catalog[currentConcernKey] || [];
+        stepHtml = '<div class="bee-character-card">' +
+          '<div class="bee-steps-indicator">' +
+            '<span class="bee-step-dot"></span>' +
+            '<span class="bee-step-dot active"></span>' +
+            '<span class="bee-step-dot"></span>' +
+            '<span class="bee-step-dot"></span>' +
+          '</div>' +
+          '<div style="font-size:0.78rem;font-weight:700;color:#0B5E9E;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">' +
+            'Focus ' + (beeState.currentConcernIdx + 1) + ' of ' + totalConcerns + ' &middot; ' + escHTML(concernLabel) +
+          '</div>' +
+          '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
+          '<div class="bee-speech-bubble">' +
+            '<h3 class="bee-greeting-title">Do you have ' + escHTML(concernLabel) + ' formulas at home?</h3>' +
+            '<p class="bee-greeting-sub">Select every product you currently have with you.</p>' +
+          '</div>' +
+          '<div style="display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;max-height:190px;overflow-y:auto;padding:2px;">' +
+            catalog.map(function (p) {
+              var isChk = (curData.products.indexOf(p.id) >= 0);
+              return '<div class="shelf-product-item' + (isChk ? ' selected focus-ring-active' : '') + '" data-prod-id="' + p.id + '" style="cursor:pointer;padding:10px 14px;background:#F8FAFC;border:1.5px solid ' + (isChk ? '#0B5E9E' : '#E2E8F0') + ';border-radius:12px;display:flex;align-items:center;gap:10px;">' +
+                '<div class="shelf-checkbox" style="width:20px;height:20px;border-radius:6px;border:1.5px solid ' + (isChk ? '#0B5E9E' : '#CBD5E1') + ';background:' + (isChk ? '#0B5E9E' : '#FFFFFF') + ';display:flex;align-items:center;justify-content:center;color:#FFFFFF;">' + (isChk ? ICONS.check : '') + '</div>' +
+                '<span style="font-size:0.9rem;font-weight:600;color:#0F2D5E;">' + escHTML(p.name) + '</span>' +
+              '</div>';
+            }).join('') +
+          '</div>' +
+          '<div style="display:flex;justify-content:space-between;width:100%;margin-top:10px;">' +
+            '<button type="button" class="btn btn-secondary btn-sm" id="bee-prev">Back</button>' +
+            '<button type="button" class="btn btn-primary btn-sm" id="bee-next-shelf">Next: Routine Time &rarr;</button>' +
+          '</div>' +
+        '</div>';
+      } else {
+        // Timing substep for this concern
+        stepHtml = '<div class="bee-character-card">' +
+          '<div class="bee-steps-indicator">' +
+            '<span class="bee-step-dot"></span>' +
+            '<span class="bee-step-dot active"></span>' +
+            '<span class="bee-step-dot"></span>' +
+            '<span class="bee-step-dot"></span>' +
+          '</div>' +
+          '<div style="font-size:0.78rem;font-weight:700;color:#0B5E9E;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">' +
+            'Focus ' + (beeState.currentConcernIdx + 1) + ' of ' + totalConcerns + ' &middot; ' + escHTML(concernLabel) +
+          '</div>' +
+          '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
+          '<div class="bee-speech-bubble">' +
+            '<h3 class="bee-greeting-title">When will you apply ' + escHTML(concernLabel) + ' care?</h3>' +
+            '<p class="bee-greeting-sub">Choose when you can consistently fit this ritual into your day.</p>' +
+          '</div>' +
+          '<div style="width:100%;text-align:left;">' +
+            '<div class="chip-group mb-16" style="display:flex;gap:8px;justify-content:center;">' +
+              '<button type="button" class="chip' + (curData.time === 'morning' ? ' selected focus-ring-active' : '') + '" data-time="morning">Morning only</button>' +
+              '<button type="button" class="chip' + (curData.time === 'night' ? ' selected focus-ring-active' : '') + '" data-time="night">Night only</button>' +
+              '<button type="button" class="chip' + (curData.time === 'both' ? ' selected focus-ring-active' : '') + '" data-time="both">Both AM & PM</button>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;justify-content:space-between;width:100%;margin-top:10px;">' +
+            '<button type="button" class="btn btn-secondary btn-sm" id="bee-prev">Back</button>' +
+            '<button type="button" class="btn btn-primary btn-sm" id="bee-next-time">' +
+              (beeState.currentConcernIdx < totalConcerns - 1 ? 'Next Concern &rarr;' : 'Next: Start Timeline &rarr;') +
+            '</button>' +
+          '</div>' +
+        '</div>';
+      }
+    } else if (step === 3) {
+      // Step 3: Start Date Bucket
       stepHtml = '<div class="bee-character-card">' +
         '<div class="bee-steps-indicator">' +
           '<span class="bee-step-dot"></span>' +
-          '<span class="bee-step-dot active"></span>' +
           '<span class="bee-step-dot"></span>' +
+          '<span class="bee-step-dot active"></span>' +
           '<span class="bee-step-dot"></span>' +
         '</div>' +
         '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
         '<div class="bee-speech-bubble">' +
-          '<h3 class="bee-greeting-title">Do you already have formulas at home?</h3>' +
-          '<p class="bee-greeting-sub">Select every product you currently have with you.</p>' +
+          '<h3 class="bee-greeting-title">When did you start your routines, ' + escHTML(beeState.name) + '?</h3>' +
+          '<p class="bee-greeting-sub">This anchors your biological timeline and weekly expectations.</p>' +
         '</div>' +
-        '<div style="display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;max-height:200px;overflow-y:auto;padding:2px;">' +
-          catalog.map(function (p) {
-            var isChk = (beeState.ownedProducts.indexOf(p.id) >= 0);
-            return '<div class="shelf-product-item' + (isChk ? ' selected focus-ring-active' : '') + '" data-prod-id="' + p.id + '" style="cursor:pointer;padding:10px 14px;background:#F8FAFC;border:1.5px solid ' + (isChk ? '#0B5E9E' : '#E2E8F0') + ';border-radius:12px;display:flex;align-items:center;gap:10px;">' +
-              '<div class="shelf-checkbox" style="width:20px;height:20px;border-radius:6px;border:1.5px solid ' + (isChk ? '#0B5E9E' : '#CBD5E1') + ';background:' + (isChk ? '#0B5E9E' : '#FFFFFF') + ';display:flex;align-items:center;justify-content:center;color:#FFFFFF;">' + (isChk ? ICONS.check : '') + '</div>' +
-              '<span style="font-size:0.9rem;font-weight:600;color:#0F2D5E;">' + escHTML(p.name) + '</span>' +
-            '</div>';
-          }).join('') +
+        '<div class="bee-options-grid">' +
+          '<button type="button" class="bee-choice-btn' + (beeState.startBucket === 'notYet' ? ' selected' : '') + '" data-bucket="notYet">' +
+            '<span class="bee-choice-title">Starting today</span>' +
+            '<span class="bee-choice-desc">Day 1 foundation</span>' +
+          '</button>' +
+          '<button type="button" class="bee-choice-btn' + (beeState.startBucket === 'under1m' ? ' selected' : '') + '" data-bucket="under1m">' +
+            '<span class="bee-choice-title">Past 2 weeks</span>' +
+            '<span class="bee-choice-desc">Adjusting to routine</span>' +
+          '</button>' +
+          '<button type="button" class="bee-choice-btn' + (beeState.startBucket === '1to3m' ? ' selected' : '') + '" data-bucket="1to3m">' +
+            '<span class="bee-choice-title">1 to 2 months ago</span>' +
+            '<span class="bee-choice-desc">Early biological signs</span>' +
+          '</button>' +
         '</div>' +
         '<div style="display:flex;justify-content:space-between;width:100%;margin-top:10px;">' +
           '<button type="button" class="btn btn-secondary btn-sm" id="bee-prev">Back</button>' +
-          '<button type="button" class="btn btn-primary btn-sm" id="bee-next-shelf">Next step &rarr;</button>' +
-        '</div>' +
-      '</div>';
-    } else if (step === 3) {
-      // Step 3: Routine Timing & Start Date
-      stepHtml = '<div class="bee-character-card">' +
-        '<div class="bee-steps-indicator">' +
-          '<span class="bee-step-dot"></span>' +
-          '<span class="bee-step-dot"></span>' +
-          '<span class="bee-step-dot active"></span>' +
-          '<span class="bee-step-dot"></span>' +
-        '</div>' +
-        '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
-        '<div class="bee-speech-bubble">' +
-          '<h3 class="bee-greeting-title">When can you fit it into your day?</h3>' +
-          '<p class="bee-greeting-sub">Realistic routines build quiet daily momentum.</p>' +
-        '</div>' +
-        '<div style="width:100%;text-align:left;">' +
-          '<div style="font-size:0.85rem;font-weight:700;color:#0F2D5E;margin-bottom:8px;">Preferred daily time:</div>' +
-          '<div class="chip-group mb-16" style="display:flex;gap:8px;">' +
-            '<button type="button" class="chip' + (beeState.routineTime === 'morning' ? ' selected focus-ring-active' : '') + '" data-time="morning">Morning only</button>' +
-            '<button type="button" class="chip' + (beeState.routineTime === 'night' ? ' selected focus-ring-active' : '') + '" data-time="night">Night only</button>' +
-            '<button type="button" class="chip' + (beeState.routineTime === 'both' ? ' selected focus-ring-active' : '') + '" data-time="both">Both AM & PM</button>' +
-          '</div>' +
-          '<div style="font-size:0.85rem;font-weight:700;color:#0F2D5E;margin-bottom:8px;">When did you start:</div>' +
-          '<div class="chip-group" style="display:flex;gap:8px;">' +
-            '<button type="button" class="chip' + (beeState.startBucket === 'notYet' ? ' selected focus-ring-active' : '') + '" data-bucket="notYet">Starting today</button>' +
-            '<button type="button" class="chip' + (beeState.startBucket === 'under1m' ? ' selected focus-ring-active' : '') + '" data-bucket="under1m">Past 2 weeks</button>' +
-            '<button type="button" class="chip' + (beeState.startBucket === '1to3m' ? ' selected focus-ring-active' : '') + '" data-bucket="1to3m">1 to 2 months ago</button>' +
-          '</div>' +
-        '</div>' +
-        '<div style="display:flex;justify-content:space-between;width:100%;margin-top:14px;">' +
-          '<button type="button" class="btn btn-secondary btn-sm" id="bee-prev">Back</button>' +
-          '<button type="button" class="btn btn-primary btn-sm" id="bee-finish-routine">Build My Routine &rarr;</button>' +
+          '<button type="button" class="btn btn-primary btn-sm" id="bee-next-bucket">Review My Companion &rarr;</button>' +
         '</div>' +
       '</div>';
     } else if (step === 4) {
       // Step 4: Celebration & Enter Companion
+      var primaryConcern = beeState.concerns[0] || 'hair';
+      var concernNames = beeState.concerns.map(function (c) {
+        return (Utils.getConcernConfig(c) && Utils.getConcernConfig(c).label) || c;
+      }).join(', ');
+
       stepHtml = '<div class="bee-character-card">' +
-        '<div class="bee-avatar-hero" style="width:96px;height:96px;border-color:#10B981;background:#ECFDF5;color:#047857;">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
-        '<div class="bee-speech-bubble" style="background:#F0FDF4;border-color:#BBF7D0;">' +
-          '<h3 class="bee-greeting-title" style="color:#065F46;">Your routine is ready, ' + escHTML(beeState.name) + '!</h3>' +
-          '<p class="bee-greeting-sub" style="color:#047857;">Your personal companion is saved privately on your device. I\'ll be right beside you every step.</p>' +
+        '<div class="bee-steps-indicator">' +
+          '<span class="bee-step-dot"></span>' +
+          '<span class="bee-step-dot"></span>' +
+          '<span class="bee-step-dot"></span>' +
+          '<span class="bee-step-dot active"></span>' +
         '</div>' +
-        '<button type="button" class="btn btn-primary" id="bee-enter-app" style="width:100%;padding:14px 20px;font-size:1.05rem;">Enter My Companion &rarr;</button>' +
+        '<div class="bee-avatar-hero" style="animation:none;transform:scale(1.05);">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
+        '<div class="bee-speech-bubble">' +
+          '<h3 class="bee-greeting-title">Your Progress Companion is ready, ' + escHTML(beeState.name) + '!</h3>' +
+          '<p class="bee-greeting-sub">Tracking ' + escHTML(concernNames) + ' with biological forecasts.</p>' +
+        '</div>' +
+        '<div style="background:#F0F7FD;border:1.5px solid #BFDBFE;border-radius:14px;padding:12px 18px;width:100%;text-align:left;box-sizing:border-box;">' +
+          '<div style="font-size:0.85rem;font-weight:700;color:#0B5E9E;margin-bottom:4px;">Ready for your journey</div>' +
+          '<div style="font-size:0.8rem;color:#475569;">Daily ritual checklist and weekly biological milestones are unlocked.</div>' +
+        '</div>' +
+        '<button type="button" class="btn btn-primary" id="bee-enter-app" style="width:100%;padding:14px 20px;font-size:1rem;margin-top:6px;">' +
+          'Enter My Companion &rarr;' +
+        '</button>' +
       '</div>';
     }
 
     beeStageEl.innerHTML = stepHtml;
 
-    // Bindings for each step
+    // Bindings
     if (step === 0) {
-      var nameInput = beeStageEl.querySelector('#bee-name-input');
-      var nameBtn = beeStageEl.querySelector('#bee-name-submit');
-      function submitName() {
-        var val = (nameInput.value || '').trim();
-        beeState.name = val ? Utils.toTitleCase(val) : 'Friend';
+      var nameInput = document.getElementById('bee-name-input');
+      var nameSubmit = document.getElementById('bee-name-submit');
+      function handleName() {
+        var raw = nameInput ? nameInput.value.trim() : '';
+        beeState.name = raw ? Utils.toTitleCase(raw) : 'Friend';
         beeState.step = 1;
         renderBeeOnboarding();
       }
-      if (nameBtn) nameBtn.addEventListener('click', submitName);
+      if (nameSubmit) nameSubmit.addEventListener('click', handleName);
       if (nameInput) {
         nameInput.addEventListener('keydown', function (e) {
-          if (e.key === 'Enter') submitName();
+          if (e.key === 'Enter') handleName();
         });
       }
     } else if (step === 1) {
       beeStageEl.querySelectorAll('[data-concern]').forEach(function (btn) {
         btn.addEventListener('click', function () {
-          beeState.concern = this.getAttribute('data-concern');
-          beeState.ownedProducts = [];
-          beeStageEl.querySelectorAll('[data-concern]').forEach(function (b) { b.classList.remove('selected'); });
-          this.classList.add('selected');
-        });
-      });
-      var nextFocusBtn = beeStageEl.querySelector('#bee-next-focus');
-      if (nextFocusBtn) {
-        nextFocusBtn.addEventListener('click', function () {
-          beeState.step = 2;
+          var val = this.getAttribute('data-concern');
+          var idx = beeState.concerns.indexOf(val);
+          if (idx >= 0) {
+            if (beeState.concerns.length > 1) {
+              beeState.concerns.splice(idx, 1);
+              delete beeState.concernsData[val];
+            } else {
+              UI.toast('Please keep at least one wellness area selected.');
+            }
+          } else {
+            beeState.concerns.push(val);
+            if (!beeState.concernsData[val]) {
+              beeState.concernsData[val] = { products: [], time: 'morning' };
+            }
+          }
           renderBeeOnboarding();
         });
-      }
-      var backBtn1 = beeStageEl.querySelector('#bee-prev');
-      if (backBtn1) {
-        backBtn1.addEventListener('click', function () {
+      });
+
+      var prevBtn1 = document.getElementById('bee-prev');
+      if (prevBtn1) {
+        prevBtn1.addEventListener('click', function () {
           beeState.step = 0;
           renderBeeOnboarding();
         });
       }
-    } else if (step === 2) {
-      beeStageEl.querySelectorAll('.shelf-product-item').forEach(function (item) {
-        item.addEventListener('click', function () {
-          var pid = this.getAttribute('data-prod-id');
-          var idx = beeState.ownedProducts.indexOf(pid);
-          if (idx >= 0) {
-            beeState.ownedProducts.splice(idx, 1);
-          } else {
-            beeState.ownedProducts.push(pid);
+
+      var nextFocusBtn = document.getElementById('bee-next-focus');
+      if (nextFocusBtn) {
+        nextFocusBtn.addEventListener('click', function () {
+          if (!beeState.concerns || !beeState.concerns.length) {
+            UI.toast('Please select at least one wellness area.');
+            return;
           }
-          renderBeeOnboarding();
-        });
-      });
-      var nextShelfBtn = beeStageEl.querySelector('#bee-next-shelf');
-      if (nextShelfBtn) {
-        nextShelfBtn.addEventListener('click', function () {
-          beeState.step = 3;
-          renderBeeOnboarding();
-        });
-      }
-      var backBtn2 = beeStageEl.querySelector('#bee-prev');
-      if (backBtn2) {
-        backBtn2.addEventListener('click', function () {
-          beeState.step = 1;
-          renderBeeOnboarding();
-        });
-      }
-    } else if (step === 3) {
-      beeStageEl.querySelectorAll('[data-time]').forEach(function (b) {
-        b.addEventListener('click', function () {
-          beeState.routineTime = this.getAttribute('data-time');
-          renderBeeOnboarding();
-        });
-      });
-      beeStageEl.querySelectorAll('[data-bucket]').forEach(function (b) {
-        b.addEventListener('click', function () {
-          beeState.startBucket = this.getAttribute('data-bucket');
-          renderBeeOnboarding();
-        });
-      });
-      var finishBtn = beeStageEl.querySelector('#bee-finish-routine');
-      if (finishBtn) {
-        finishBtn.addEventListener('click', function () {
-          beeState.step = 4;
-          renderBeeOnboarding();
-        });
-      }
-      var backBtn3 = beeStageEl.querySelector('#bee-prev');
-      if (backBtn3) {
-        backBtn3.addEventListener('click', function () {
+          beeState.currentConcernIdx = 0;
+          beeState.concernSubstep = 'shelf';
           beeState.step = 2;
           renderBeeOnboarding();
         });
       }
+    } else if (step === 2) {
+      var curKey = beeState.concerns[beeState.currentConcernIdx] || 'hair';
+      if (!beeState.concernsData[curKey]) {
+        beeState.concernsData[curKey] = { products: [], time: 'morning' };
+      }
+
+      if (beeState.concernSubstep === 'shelf') {
+        beeStageEl.querySelectorAll('.shelf-product-item').forEach(function (item) {
+          item.addEventListener('click', function () {
+            var prodId = this.getAttribute('data-prod-id');
+            var pList = beeState.concernsData[curKey].products;
+            var pIdx = pList.indexOf(prodId);
+            if (pIdx >= 0) pList.splice(pIdx, 1);
+            else pList.push(prodId);
+            renderBeeOnboarding();
+          });
+        });
+
+        var prevBtn2 = document.getElementById('bee-prev');
+        if (prevBtn2) {
+          prevBtn2.addEventListener('click', function () {
+            if (beeState.currentConcernIdx > 0) {
+              beeState.currentConcernIdx--;
+              beeState.concernSubstep = 'timing';
+            } else {
+              beeState.step = 1;
+            }
+            renderBeeOnboarding();
+          });
+        }
+
+        var nextShelfBtn = document.getElementById('bee-next-shelf');
+        if (nextShelfBtn) {
+          nextShelfBtn.addEventListener('click', function () {
+            beeState.concernSubstep = 'timing';
+            renderBeeOnboarding();
+          });
+        }
+      } else {
+        beeStageEl.querySelectorAll('[data-time]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            beeState.concernsData[curKey].time = this.getAttribute('data-time');
+            renderBeeOnboarding();
+          });
+        });
+
+        var prevBtnTiming = document.getElementById('bee-prev');
+        if (prevBtnTiming) {
+          prevBtnTiming.addEventListener('click', function () {
+            beeState.concernSubstep = 'shelf';
+            renderBeeOnboarding();
+          });
+        }
+
+        var nextTimeBtn = document.getElementById('bee-next-time');
+        if (nextTimeBtn) {
+          nextTimeBtn.addEventListener('click', function () {
+            if (beeState.currentConcernIdx < beeState.concerns.length - 1) {
+              beeState.currentConcernIdx++;
+              beeState.concernSubstep = 'shelf';
+              renderBeeOnboarding();
+            } else {
+              beeState.step = 3;
+              renderBeeOnboarding();
+            }
+          });
+        }
+      }
+    } else if (step === 3) {
+      beeStageEl.querySelectorAll('[data-bucket]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          beeState.startBucket = this.getAttribute('data-bucket');
+          renderBeeOnboarding();
+        });
+      });
+
+      var prevBtn3 = document.getElementById('bee-prev');
+      if (prevBtn3) {
+        prevBtn3.addEventListener('click', function () {
+          beeState.step = 2;
+          beeState.currentConcernIdx = beeState.concerns.length - 1;
+          beeState.concernSubstep = 'timing';
+          renderBeeOnboarding();
+        });
+      }
+
+      var nextBucketBtn = document.getElementById('bee-next-bucket');
+      if (nextBucketBtn) {
+        nextBucketBtn.addEventListener('click', function () {
+          beeState.step = 4;
+          renderBeeOnboarding();
+        });
+      }
     } else if (step === 4) {
-      var enterBtn = beeStageEl.querySelector('#bee-enter-app');
+      var enterBtn = document.getElementById('bee-enter-app');
       if (enterBtn) {
         enterBtn.addEventListener('click', function () {
-          var concern = beeState.concern || 'hair';
-          var cfg = Utils.getConcernConfig(concern);
-          var catalogList = CONTENT.catalog[concern] || [];
-          var ownedList = (beeState.ownedProducts || []).map(function (pid) {
-            var match = catalogList.find(function (c) { return c.id === pid; });
-            return match || { id: pid, name: 'Targeted formula', sizeDays: 30 };
+          var primaryConcern = beeState.concerns[0] || 'hair';
+          var allProds = [];
+          beeState.concerns.forEach(function (ck) {
+            var cObj = beeState.concernsData[ck];
+            if (cObj && cObj.products) {
+              allProds = allProds.concat(cObj.products);
+            }
           });
-          if (!ownedList.length && catalogList.length) {
-            ownedList.push(catalogList[0]);
-          }
 
-          var startDate = Utils.getStartDateFromBucket(beeState.startBucket || 'notYet');
-          var profile = {
-            version: 3,
-            name: beeState.name || 'Friend',
-            concern: concern,
-            startDate: startDate,
-            startBucket: beeState.startBucket || 'notYet',
-            routineTime: beeState.routineTime || 'morning',
-            products: ownedList,
-            marker: (cfg.markers && cfg.markers[0]) || 'Observed change',
-            checkins: [],
-            flags: { seenExpect: true },
-            baseline: { primary: 3, secondary: 3, date: startDate }
+          var prof = {
+            name: beeState.name,
+            concern: primaryConcern,
+            concerns: beeState.concerns,
+            products: allProds,
+            concernsData: beeState.concernsData,
+            timing: (beeState.concernsData[primaryConcern] && beeState.concernsData[primaryConcern].time) || 'both',
+            startBucket: beeState.startBucket,
+            startDate: Utils.getStartDateFromBucket(beeState.startBucket),
+            checkins: {},
+            markerRatings: [],
+            version: 3
           };
-
-          Storage.save(profile);
-          renderAllSections();
+          Storage.save(prof);
 
           startGlide(function () {
+            renderAllSections();
             scrollToSection('today');
-            UI.toast('Welcome, ' + profile.name + '! Your routine is ready.');
           });
         });
       }
     }
   }
 
-  function play() {
+  function play(forceBee) {
     clearTimers();
-    if (headerIcon) {
-      headerIcon.style.opacity = '';
-      headerIcon.style.transition = '';
+    introEl.classList.remove('dismissed', 'playing', 'fading');
+    introEl.style.opacity = '1';
+    if (wordmark) wordmark.style.opacity = '';
+    if (lettersEl) lettersEl.style.display = '';
+    if (canvasEl) {
+      canvasEl.style.display = '';
+      canvasEl.style.transform = '';
+      canvasEl.style.opacity = '';
+    }
+    if (beeStageEl) {
+      beeStageEl.style.display = 'none';
+      beeStageEl.style.opacity = '0';
     }
     if (figure) {
       figure.style.transform = '';
       figure.style.transition = '';
     }
-    if (wordmark) {
-      wordmark.style.opacity = '';
-      wordmark.style.transition = '';
-      wordmark.style.display = '';
-    }
-    if (lettersEl) {
-      lettersEl.style.display = '';
-    }
-    if (beeStageEl) {
-      beeStageEl.style.display = 'none';
-      beeStageEl.style.opacity = '';
-    }
-    introEl.style.opacity = '';
-    introEl.style.transition = '';
 
-    introEl.classList.remove('dismissed', 'fading', 'playing');
-    void introEl.offsetWidth; // restart CSS animations
+    void introEl.offsetWidth; // force reflow
     introEl.classList.add('playing');
     introEl.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
 
-    var prof = Storage.load();
-    if (!prof) {
-      // Force user through BEE character onboarding takeover!
+    var existingProfile = Storage.load();
+
+    if (!existingProfile || forceBee) {
+      // Requirement 1: Hold completed logo until 9.2s, then trigger BEE
       introTimer = setTimeout(function () {
         renderBeeOnboarding();
-      }, 5000);
+      }, 9200);
     } else {
-      // Returning user replay
-      glideTimer = setTimeout(function () {
+      // Returning user with active profile: glide smoothly into header logo at 9.2s
+      introTimer = setTimeout(function () {
         startGlide();
-      }, 7400);
+      }, 9200);
     }
   }
 
   window.replayIntro = function () {
     try { sessionStorage.removeItem('bwc_intro_seen'); } catch (e) {}
-    beeState.step = 0;
-    play();
+    play(false);
   };
 
   window.replayIntroWithBee = function () {
     try { sessionStorage.removeItem('bwc_intro_seen'); } catch (e) {}
-    beeState.step = 0;
-    clearTimers();
-    if (headerIcon) {
-      headerIcon.style.opacity = '';
-      headerIcon.style.transition = '';
-    }
-    if (figure) {
-      figure.style.transform = '';
-      figure.style.transition = '';
-    }
-    if (wordmark) {
-      wordmark.style.opacity = '';
-      wordmark.style.transition = '';
-      wordmark.style.display = '';
-    }
-    if (lettersEl) {
-      lettersEl.style.display = '';
-    }
-    if (beeStageEl) {
-      beeStageEl.style.display = 'none';
-      beeStageEl.style.opacity = '';
-    }
-    introEl.style.opacity = '';
-    introEl.style.transition = '';
-
-    introEl.classList.remove('dismissed', 'fading', 'playing');
-    void introEl.offsetWidth;
-    introEl.classList.add('playing');
-    introEl.setAttribute('aria-hidden', 'false');
-    document.body.style.overflow = 'hidden';
-
-    introTimer = setTimeout(function () {
-      renderBeeOnboarding();
-    }, 5000);
+    play(true);
   };
 
   if (skipBtn) {
-    skipBtn.addEventListener('click', dismissIntro);
-  }
-
-  if (brandLogo) {
-    brandLogo.addEventListener('click', function (e) {
-      if (e.shiftKey) {
-        e.preventDefault();
-        window.replayIntro();
-      }
+    skipBtn.addEventListener('click', function () {
+      dismissIntro();
     });
   }
 
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var seen = false;
-  try { seen = (sessionStorage.getItem('bwc_intro_seen') === 'true'); } catch (e) {}
-  var hasProfile = !!Storage.load();
+  try { seen = sessionStorage.getItem('bwc_intro_seen') === 'true'; } catch (e) {}
+  var prof = Storage.load();
 
-  if (hasProfile && (reduce || seen)) {
+  if (reduce || (seen && prof)) {
     dismissIntro();
     return;
   }
 
-  play();
+  play(false);
 }
-
 
 /* ==================== INIT ==================== */
 function init() {
