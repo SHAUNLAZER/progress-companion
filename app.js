@@ -76,6 +76,29 @@ const Storage = {
 
 /* ==================== UTILS ==================== */
 var Utils = {
+  getDefaultProfile: function () {
+    var today = Utils.getToday();
+    var concern = 'hair';
+    var catalog = (typeof CONTENT !== 'undefined' && CONTENT.catalog && CONTENT.catalog[concern]) || [];
+    var products = catalog.slice(0, 2);
+    if (!products.length) {
+      products = [{ id: 'hair-oil', name: 'Rosemary Hair Growth Oil', sizeDays: 30 }];
+    }
+    return {
+      version: 3,
+      name: 'Friend',
+      concern: concern,
+      startDate: today,
+      startBucket: 'notYet',
+      routineTime: 'morning',
+      products: products,
+      marker: 'Observed change',
+      checkins: [],
+      flags: { seenExpect: true },
+      baseline: { primary: 3, secondary: 3, date: today }
+    };
+  },
+
   getToday: function () {
     var d = new Date();
     return d.getFullYear() + '-' +
@@ -2028,6 +2051,40 @@ UI.renderHeader = function () {
 };
 
 /* ==================== SECTION SCROLLING & SCROLLSPY ==================== */
+function updateActiveNav(id) {
+  if (!id) return;
+  var navLinks = document.querySelectorAll('.header-nav-link, #tab-bar a');
+  navLinks.forEach(function (link) {
+    var target = link.getAttribute('data-scroll');
+    if (target === id || (id === 'how' && target === 'companion') || (id === 'companion' && target === 'companion')) {
+      link.classList.add('active');
+    } else {
+      link.classList.remove('active');
+    }
+  });
+
+  var railButtons = document.querySelectorAll('.rail-step-btn');
+  railButtons.forEach(function (btn) {
+    var target = btn.getAttribute('data-scroll');
+    var node = btn.querySelector('.rail-step-node');
+    if (target === id) {
+      btn.classList.add('active');
+      if (node) {
+        node.style.background = '#0B5E9E';
+        node.style.borderColor = '#0B5E9E';
+        node.style.transform = 'scale(1.25)';
+      }
+    } else {
+      btn.classList.remove('active');
+      if (node) {
+        node.style.background = '#FFFFFF';
+        node.style.borderColor = '#94A3B8';
+        node.style.transform = 'scale(1)';
+      }
+    }
+  });
+}
+
 function scrollToSection(id) {
   var el = document.getElementById(id);
   if (el) {
@@ -2038,64 +2095,67 @@ function scrollToSection(id) {
       top: offsetPosition,
       behavior: 'smooth'
     });
+    updateActiveNav(id);
     try {
       history.replaceState(null, '', '#' + id);
     } catch (e) {}
   }
 }
 
+var _scrollSpyTicking = false;
 function initScrollspy() {
-  var navLinks = document.querySelectorAll('.header-nav-link, #tab-bar a');
-  var sectionElements = [];
-  SECTIONS.forEach(function (sec) {
-    var el = document.getElementById(sec.id);
-    if (el) sectionElements.push(el);
-  });
-
-  if (!window.IntersectionObserver) return;
-
-  var observer = new IntersectionObserver(function (entries) {
-    entries.forEach(function (entry) {
-      if (entry.isIntersecting) {
-        var id = entry.target.id;
-        navLinks.forEach(function (link) {
-          var target = link.getAttribute('data-scroll');
-          if (target === id || (id === 'how' && target === 'companion')) {
-            link.classList.add('active');
-          } else {
-            link.classList.remove('active');
-          }
-        });
-
-        // Dynamic desktop stepper highlight
-        var railButtons = document.querySelectorAll('.rail-step-btn');
-        railButtons.forEach(function (btn) {
-          var target = btn.getAttribute('data-scroll');
-          var node = btn.querySelector('.rail-step-node');
-          if (target === id) {
-            btn.classList.add('active');
-            if (node && !node.classList.contains('completed')) {
-              node.classList.add('active');
-            }
-          } else {
-            btn.classList.remove('active');
-            if (node) node.classList.remove('active');
-          }
-        });
-
-        try {
-          history.replaceState(null, '', '#' + id);
-        } catch (e) {}
+  function checkScroll() {
+    _scrollSpyTicking = false;
+    var sections = ['today', 'timeline', 'mind', 'results', 'setup', 'companion', 'how', 'nextstep'];
+    var current = null;
+    for (var i = 0; i < sections.length; i++) {
+      var el = document.getElementById(sections[i]);
+      if (el) {
+        var rect = el.getBoundingClientRect();
+        if (rect.top <= 200 && rect.bottom > 80) {
+          current = sections[i];
+          break;
+        }
       }
-    });
-  }, { threshold: 0.25, rootMargin: '-60px 0px -40% 0px' });
+    }
+    if (current) {
+      updateActiveNav(current);
+    }
+  }
 
-  sectionElements.forEach(function (sec) {
-    observer.observe(sec);
-  });
+  if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+    window.removeEventListener('scroll', onScrollSpyWindow);
+  }
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('scroll', onScrollSpyWindow, { passive: true });
+  }
+  checkScroll();
 }
 
-
+function onScrollSpyWindow() {
+  if (!_scrollSpyTicking) {
+    _scrollSpyTicking = true;
+    var raf = (typeof window !== 'undefined' && window.requestAnimationFrame) || (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : function (cb) { return setTimeout(cb, 16); });
+    raf(function () {
+      _scrollSpyTicking = false;
+      var sections = ['today', 'timeline', 'mind', 'results', 'setup', 'companion', 'how', 'nextstep'];
+      var current = null;
+      for (var i = 0; i < sections.length; i++) {
+        var el = document.getElementById(sections[i]);
+        if (el) {
+          var rect = el.getBoundingClientRect();
+          if (rect.top <= 200 && rect.bottom > 80) {
+            current = sections[i];
+            break;
+          }
+        }
+      }
+      if (current) {
+        updateActiveNav(current);
+      }
+    });
+  }
+}
 
 /* ==================== SECTION BUILDERS & RENDERERS ==================== */
 
@@ -2803,23 +2863,8 @@ function renderCheckinSection(container) {
   var profile = Storage.load();
 
   if (!profile) {
-    var p = (CONTENT.landing && CONTENT.landing.placeholder) || { title: "Set up your routine first", text: "Complete your quick setup to unlock this section.", cta: "Set up my plan" };
-    container.innerHTML = '<div class="container">' +
-      '<div class="section-header text-center">' +
-        '<h2 class="section-title">Daily ritual</h2>' +
-        '<p class="section-subline">Ten seconds a day to record your routine and note how you feel.</p>' +
-      '</div>' +
-      '<div class="card text-center" style="max-width:540px;margin:0 auto;padding:36px 24px;">' +
-        '<h3 class="card-title mb-8">' + escHTML(p.title) + '</h3>' +
-        '<p class="card-text mb-20">' + escHTML(p.text) + '</p>' +
-        '<button type="button" class="btn btn-primary" data-scroll="setup">' + escHTML(p.cta) + '</button>' +
-      '</div>' +
-    '</div>';
-    container.querySelector('[data-scroll]').addEventListener('click', function (e) {
-      e.preventDefault();
-      scrollToSection('setup');
-    });
-    return;
+    profile = Utils.getDefaultProfile();
+    Storage.save(profile);
   }
 
   var today = Utils.getToday();
@@ -3053,23 +3098,8 @@ function renderTimelineSection(container) {
   var profile = Storage.load();
 
   if (!profile) {
-    var p = (CONTENT.landing && CONTENT.landing.placeholder) || { title: "Set up your routine first", text: "Complete your quick setup to unlock this section.", cta: "Set up my plan" };
-    container.innerHTML = '<div class="container">' +
-      '<div class="section-header text-center">' +
-        '<h2 class="section-title">Your timeline</h2>' +
-        '<p class="section-subline">What to expect and when to look for changes.</p>' +
-      '</div>' +
-      '<div class="card text-center" style="max-width:540px;margin:0 auto;padding:36px 24px;">' +
-        '<h3 class="card-title mb-8">' + escHTML(p.title) + '</h3>' +
-        '<p class="card-text mb-20">' + escHTML(p.text) + '</p>' +
-        '<button type="button" class="btn btn-primary" data-scroll="setup">' + escHTML(p.cta) + '</button>' +
-      '</div>' +
-    '</div>';
-    container.querySelector('[data-scroll]').addEventListener('click', function (e) {
-      e.preventDefault();
-      scrollToSection('setup');
-    });
-    return;
+    profile = Utils.getDefaultProfile();
+    Storage.save(profile);
   }
 
   var cfg = Utils.getConcernConfig(profile.concern);
@@ -3346,6 +3376,29 @@ function renderMindSection(container) {
   var labelEl = document.getElementById('breathing-label');
   var btnBreathing = document.getElementById('btn-toggle-breathing');
 
+  function toggleBreathing() {
+    isBreathingActive = !isBreathingActive;
+    if (isBreathingActive) {
+      if (btnBreathing) btnBreathing.textContent = mind.breathing.btnPause;
+      runBreathCycle();
+    } else {
+      clearTimeout(breathTimer);
+      if (btnBreathing) btnBreathing.textContent = mind.breathing.btnStart;
+      if (coreEl) coreEl.className = 'breathing-circle-core';
+      if (labelEl) labelEl.textContent = 'Tap to start';
+    }
+  }
+
+  if (coreEl) {
+    coreEl.addEventListener('click', toggleBreathing);
+    coreEl.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleBreathing();
+      }
+    });
+  }
+
   function runBreathCycle() {
     if (!isBreathingActive) return;
     labelEl.textContent = mind.breathing.inhale;
@@ -3411,19 +3464,8 @@ function renderResultsSection(container) {
   var profile = Storage.load();
 
   if (!profile) {
-    var p = (CONTENT.landing && CONTENT.landing.placeholder) || { title: "Set up your routine first", text: "Complete your quick setup to unlock this section.", cta: "Set up my plan" };
-    container.innerHTML = '<div class="container">' +
-      '<div class="section-header text-center">' +
-        '<h2 class="section-title">Your results</h2>' +
-        '<p class="section-subline">Track your watched marker and compare against the typical range.</p>' +
-      '</div>' +
-      '<div class="card text-center" style="max-width:540px;margin:0 auto;padding:36px 24px;">' +
-        '<h3 class="card-title mb-8">' + escHTML(p.title) + '</h3>' +
-        '<p class="card-text mb-20">' + escHTML(p.text) + '</p>' +
-        '<button type="button" class="btn btn-primary" data-scroll="today">' + escHTML(p.cta) + '</button>' +
-      '</div>' +
-    '</div>';
-    return;
+    profile = Utils.getDefaultProfile();
+    Storage.save(profile);
   }
 
   var verdict = Utils.getVerdict(profile);
@@ -3570,23 +3612,8 @@ function renderNextStepSection(container) {
   var profile = Storage.load();
 
   if (!profile) {
-    var p = (CONTENT.landing && CONTENT.landing.placeholder) || { title: "Set up your routine first", text: "Complete your quick setup to unlock this section.", cta: "Set up my plan" };
-    container.innerHTML = '<div class="container">' +
-      '<div class="section-header text-center">' +
-        '<h2 class="section-title">What next?</h2>' +
-        '<p class="section-subline">Clear next steps based on your progress and timeline.</p>' +
-      '</div>' +
-      '<div class="card text-center" style="max-width:540px;margin:0 auto;padding:36px 24px;">' +
-        '<h3 class="card-title mb-8">' + escHTML(p.title) + '</h3>' +
-        '<p class="card-text mb-20">' + escHTML(p.text) + '</p>' +
-        '<button type="button" class="btn btn-primary" data-scroll="setup">' + escHTML(p.cta) + '</button>' +
-      '</div>' +
-    '</div>';
-    container.querySelector('[data-scroll]').addEventListener('click', function (e) {
-      e.preventDefault();
-      scrollToSection('setup');
-    });
-    return;
+    profile = Utils.getDefaultProfile();
+    Storage.save(profile);
   }
 
   var verdict = Utils.getVerdict(profile);
@@ -4162,6 +4189,7 @@ function renderAllSections() {
 
   renderDesktopRail();
   renderSiteFooter();
+  initScrollspy();
   
 }
 
@@ -4177,14 +4205,25 @@ function initIntroAnimation() {
   var wordmark = document.getElementById('intro-wordmark');
   var lettersEl = document.getElementById('intro-letters');
   var canvasEl = document.getElementById('intro-canvas');
+  var beeStageEl = document.getElementById('bee-onboarding-stage');
 
-  var GLIDE_TIME = 7800; // Trigger glide right after figure settles and wordmark appears
-  var timer = null;
+  var beeState = {
+    step: 0,
+    name: '',
+    concern: 'hair',
+    ownedProducts: [],
+    routineTime: 'morning',
+    startBucket: 'notYet'
+  };
+
+  var introTimer = null;
+  var glideTimer = null;
   var landTimer = null;
   var isGliding = false;
 
   function clearTimers() {
-    if (timer) clearTimeout(timer);
+    if (introTimer) clearTimeout(introTimer);
+    if (glideTimer) clearTimeout(glideTimer);
     if (landTimer) clearTimeout(landTimer);
   }
 
@@ -4200,8 +4239,11 @@ function initIntroAnimation() {
     document.body.style.overflow = '';
   }
 
-  function startGlide() {
-    if (isGliding || !introEl || introEl.classList.contains('dismissed')) return;
+  function startGlide(onDone) {
+    if (isGliding || !introEl || introEl.classList.contains('dismissed')) {
+      if (typeof onDone === 'function') onDone();
+      return;
+    }
     isGliding = true;
     clearTimers();
 
@@ -4233,6 +4275,10 @@ function initIntroAnimation() {
           wordmark.style.transition = 'opacity 0.5s ease';
           wordmark.style.opacity = '0';
         }
+        if (beeStageEl) {
+          beeStageEl.style.transition = 'opacity 0.5s ease';
+          beeStageEl.style.opacity = '0';
+        }
         introEl.style.transition = 'opacity 0.9s cubic-bezier(0.4, 0, 0.2, 1)';
         introEl.style.opacity = '0';
       } else {
@@ -4247,63 +4293,386 @@ function initIntroAnimation() {
     }
 
     landTimer = setTimeout(function () {
+      if (targetEl) targetEl.style.opacity = '1';
       dismissIntro();
+      if (typeof onDone === 'function') onDone();
     }, 950);
+  }
+
+  function renderBeeOnboarding() {
+    if (!beeStageEl) return;
+    if (lettersEl) lettersEl.style.display = 'none';
+    if (wordmark) wordmark.style.display = 'none';
+    if (canvasEl) {
+      canvasEl.style.transition = 'transform 0.5s ease';
+      canvasEl.style.transform = 'scale(0.65) translateY(-30px)';
+    }
+
+    beeStageEl.style.display = 'flex';
+    beeStageEl.style.opacity = '1';
+
+    var step = beeState.step;
+    var stepHtml = '';
+
+    if (step === 0) {
+      // Step 0: Name Greeting
+      stepHtml = '<div class="bee-character-card">' +
+        '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
+        '<div class="bee-speech-bubble">' +
+          '<h3 class="bee-greeting-title">Hi! My name is BEE! What\'s yours?</h3>' +
+          '<p class="bee-greeting-sub">I will walk you through your wellness routine step by step.</p>' +
+        '</div>' +
+        '<div class="bee-input-group">' +
+          '<input type="text" class="bee-input-name" id="bee-name-input" placeholder="Type your first name..." value="' + escHTML(beeState.name) + '" maxlength="30" autofocus />' +
+          '<button type="button" class="btn btn-primary" id="bee-name-submit">Continue &rarr;</button>' +
+        '</div>' +
+      '</div>';
+    } else if (step === 1) {
+      // Step 1: Concern Focus
+      stepHtml = '<div class="bee-character-card">' +
+        '<div class="bee-steps-indicator">' +
+          '<span class="bee-step-dot active"></span>' +
+          '<span class="bee-step-dot"></span>' +
+          '<span class="bee-step-dot"></span>' +
+          '<span class="bee-step-dot"></span>' +
+        '</div>' +
+        '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
+        '<div class="bee-speech-bubble">' +
+          '<h3 class="bee-greeting-title">Nice to meet you, ' + escHTML(beeState.name) + '!</h3>' +
+          '<p class="bee-greeting-sub">What is your primary wellness focus right now?</p>' +
+        '</div>' +
+        '<div class="bee-options-grid">' +
+          CONTENT.quiz.concerns.map(function (c) {
+            var isSel = (beeState.concern === c.value);
+            return '<button type="button" class="bee-choice-btn' + (isSel ? ' selected' : '') + '" data-concern="' + c.value + '">' +
+              '<span class="bee-choice-title">' + escHTML(c.label) + '</span>' +
+              '<span class="bee-choice-desc">Personalized biological timeline</span>' +
+            '</button>';
+          }).join('') +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;width:100%;margin-top:10px;">' +
+          '<button type="button" class="btn btn-secondary btn-sm" id="bee-prev">Back</button>' +
+          '<button type="button" class="btn btn-primary btn-sm" id="bee-next-focus">Next step &rarr;</button>' +
+        '</div>' +
+      '</div>';
+    } else if (step === 2) {
+      // Step 2: Owned Formulas Checklist
+      var catalog = (CONTENT.catalog && CONTENT.catalog[beeState.concern]) || [];
+      stepHtml = '<div class="bee-character-card">' +
+        '<div class="bee-steps-indicator">' +
+          '<span class="bee-step-dot"></span>' +
+          '<span class="bee-step-dot active"></span>' +
+          '<span class="bee-step-dot"></span>' +
+          '<span class="bee-step-dot"></span>' +
+        '</div>' +
+        '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
+        '<div class="bee-speech-bubble">' +
+          '<h3 class="bee-greeting-title">Do you already have formulas at home?</h3>' +
+          '<p class="bee-greeting-sub">Select every product you currently have with you.</p>' +
+        '</div>' +
+        '<div style="display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;max-height:200px;overflow-y:auto;padding:2px;">' +
+          catalog.map(function (p) {
+            var isChk = (beeState.ownedProducts.indexOf(p.id) >= 0);
+            return '<div class="shelf-product-item' + (isChk ? ' selected focus-ring-active' : '') + '" data-prod-id="' + p.id + '" style="cursor:pointer;padding:10px 14px;background:#F8FAFC;border:1.5px solid ' + (isChk ? '#0B5E9E' : '#E2E8F0') + ';border-radius:12px;display:flex;align-items:center;gap:10px;">' +
+              '<div class="shelf-checkbox" style="width:20px;height:20px;border-radius:6px;border:1.5px solid ' + (isChk ? '#0B5E9E' : '#CBD5E1') + ';background:' + (isChk ? '#0B5E9E' : '#FFFFFF') + ';display:flex;align-items:center;justify-content:center;color:#FFFFFF;">' + (isChk ? ICONS.check : '') + '</div>' +
+              '<span style="font-size:0.9rem;font-weight:600;color:#0F2D5E;">' + escHTML(p.name) + '</span>' +
+            '</div>';
+          }).join('') +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;width:100%;margin-top:10px;">' +
+          '<button type="button" class="btn btn-secondary btn-sm" id="bee-prev">Back</button>' +
+          '<button type="button" class="btn btn-primary btn-sm" id="bee-next-shelf">Next step &rarr;</button>' +
+        '</div>' +
+      '</div>';
+    } else if (step === 3) {
+      // Step 3: Routine Timing & Start Date
+      stepHtml = '<div class="bee-character-card">' +
+        '<div class="bee-steps-indicator">' +
+          '<span class="bee-step-dot"></span>' +
+          '<span class="bee-step-dot"></span>' +
+          '<span class="bee-step-dot active"></span>' +
+          '<span class="bee-step-dot"></span>' +
+        '</div>' +
+        '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
+        '<div class="bee-speech-bubble">' +
+          '<h3 class="bee-greeting-title">When can you fit it into your day?</h3>' +
+          '<p class="bee-greeting-sub">Realistic routines build quiet daily momentum.</p>' +
+        '</div>' +
+        '<div style="width:100%;text-align:left;">' +
+          '<div style="font-size:0.85rem;font-weight:700;color:#0F2D5E;margin-bottom:8px;">Preferred daily time:</div>' +
+          '<div class="chip-group mb-16" style="display:flex;gap:8px;">' +
+            '<button type="button" class="chip' + (beeState.routineTime === 'morning' ? ' selected focus-ring-active' : '') + '" data-time="morning">Morning only</button>' +
+            '<button type="button" class="chip' + (beeState.routineTime === 'night' ? ' selected focus-ring-active' : '') + '" data-time="night">Night only</button>' +
+            '<button type="button" class="chip' + (beeState.routineTime === 'both' ? ' selected focus-ring-active' : '') + '" data-time="both">Both AM & PM</button>' +
+          '</div>' +
+          '<div style="font-size:0.85rem;font-weight:700;color:#0F2D5E;margin-bottom:8px;">When did you start:</div>' +
+          '<div class="chip-group" style="display:flex;gap:8px;">' +
+            '<button type="button" class="chip' + (beeState.startBucket === 'notYet' ? ' selected focus-ring-active' : '') + '" data-bucket="notYet">Starting today</button>' +
+            '<button type="button" class="chip' + (beeState.startBucket === 'under1m' ? ' selected focus-ring-active' : '') + '" data-bucket="under1m">Past 2 weeks</button>' +
+            '<button type="button" class="chip' + (beeState.startBucket === '1to3m' ? ' selected focus-ring-active' : '') + '" data-bucket="1to3m">1 to 2 months ago</button>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;width:100%;margin-top:14px;">' +
+          '<button type="button" class="btn btn-secondary btn-sm" id="bee-prev">Back</button>' +
+          '<button type="button" class="btn btn-primary btn-sm" id="bee-finish-routine">Build My Routine &rarr;</button>' +
+        '</div>' +
+      '</div>';
+    } else if (step === 4) {
+      // Step 4: Celebration & Enter Companion
+      stepHtml = '<div class="bee-character-card">' +
+        '<div class="bee-avatar-hero" style="width:96px;height:96px;border-color:#10B981;background:#ECFDF5;color:#047857;">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
+        '<div class="bee-speech-bubble" style="background:#F0FDF4;border-color:#BBF7D0;">' +
+          '<h3 class="bee-greeting-title" style="color:#065F46;">Your routine is ready, ' + escHTML(beeState.name) + '!</h3>' +
+          '<p class="bee-greeting-sub" style="color:#047857;">Your personal companion is saved privately on your device. I\'ll be right beside you every step.</p>' +
+        '</div>' +
+        '<button type="button" class="btn btn-primary" id="bee-enter-app" style="width:100%;padding:14px 20px;font-size:1.05rem;">Enter My Companion &rarr;</button>' +
+      '</div>';
+    }
+
+    beeStageEl.innerHTML = stepHtml;
+
+    // Prevent clicks inside the questionnaire card from bubbling to background
+    beeStageEl.onclick = function (e) {
+      e.stopPropagation();
+    };
+
+    // Bindings for each step
+    if (step === 0) {
+      var nameInput = beeStageEl.querySelector('#bee-name-input');
+      var nameBtn = beeStageEl.querySelector('#bee-name-submit');
+      function submitName() {
+        var val = (nameInput.value || '').trim();
+        beeState.name = val ? Utils.toTitleCase(val) : 'Friend';
+        beeState.step = 1;
+        renderBeeOnboarding();
+      }
+      if (nameBtn) nameBtn.addEventListener('click', submitName);
+      if (nameInput) {
+        nameInput.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') submitName();
+        });
+      }
+    } else if (step === 1) {
+      beeStageEl.querySelectorAll('[data-concern]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          beeState.concern = this.getAttribute('data-concern');
+          beeState.ownedProducts = [];
+          beeStageEl.querySelectorAll('[data-concern]').forEach(function (b) { b.classList.remove('selected'); });
+          this.classList.add('selected');
+        });
+      });
+      var nextFocusBtn = beeStageEl.querySelector('#bee-next-focus');
+      if (nextFocusBtn) {
+        nextFocusBtn.addEventListener('click', function () {
+          beeState.step = 2;
+          renderBeeOnboarding();
+        });
+      }
+      var backBtn1 = beeStageEl.querySelector('#bee-prev');
+      if (backBtn1) {
+        backBtn1.addEventListener('click', function () {
+          beeState.step = 0;
+          renderBeeOnboarding();
+        });
+      }
+    } else if (step === 2) {
+      beeStageEl.querySelectorAll('.shelf-product-item').forEach(function (item) {
+        item.addEventListener('click', function () {
+          var pid = this.getAttribute('data-prod-id');
+          var idx = beeState.ownedProducts.indexOf(pid);
+          if (idx >= 0) {
+            beeState.ownedProducts.splice(idx, 1);
+          } else {
+            beeState.ownedProducts.push(pid);
+          }
+          renderBeeOnboarding();
+        });
+      });
+      var nextShelfBtn = beeStageEl.querySelector('#bee-next-shelf');
+      if (nextShelfBtn) {
+        nextShelfBtn.addEventListener('click', function () {
+          beeState.step = 3;
+          renderBeeOnboarding();
+        });
+      }
+      var backBtn2 = beeStageEl.querySelector('#bee-prev');
+      if (backBtn2) {
+        backBtn2.addEventListener('click', function () {
+          beeState.step = 1;
+          renderBeeOnboarding();
+        });
+      }
+    } else if (step === 3) {
+      beeStageEl.querySelectorAll('[data-time]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          beeState.routineTime = this.getAttribute('data-time');
+          renderBeeOnboarding();
+        });
+      });
+      beeStageEl.querySelectorAll('[data-bucket]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          beeState.startBucket = this.getAttribute('data-bucket');
+          renderBeeOnboarding();
+        });
+      });
+      var finishBtn = beeStageEl.querySelector('#bee-finish-routine');
+      if (finishBtn) {
+        finishBtn.addEventListener('click', function () {
+          beeState.step = 4;
+          renderBeeOnboarding();
+        });
+      }
+      var backBtn3 = beeStageEl.querySelector('#bee-prev');
+      if (backBtn3) {
+        backBtn3.addEventListener('click', function () {
+          beeState.step = 2;
+          renderBeeOnboarding();
+        });
+      }
+    } else if (step === 4) {
+      var enterBtn = beeStageEl.querySelector('#bee-enter-app');
+      if (enterBtn) {
+        enterBtn.addEventListener('click', function () {
+          var concern = beeState.concern || 'hair';
+          var cfg = Utils.getConcernConfig(concern);
+          var catalogList = (CONTENT.catalog && CONTENT.catalog[concern]) || [];
+          var ownedList = (beeState.ownedProducts || []).map(function (pid) {
+            var match = catalogList.find(function (c) { return c.id === pid; });
+            return match || { id: pid, name: 'Targeted formula', sizeDays: 30 };
+          });
+          if (!ownedList.length && catalogList.length) {
+            ownedList.push(catalogList[0]);
+          }
+
+          var startDate = Utils.getStartDateFromBucket(beeState.startBucket || 'notYet');
+          var profile = {
+            version: 3,
+            name: beeState.name || 'Friend',
+            concern: concern,
+            startDate: startDate,
+            startBucket: beeState.startBucket || 'notYet',
+            routineTime: beeState.routineTime || 'morning',
+            products: ownedList,
+            marker: (cfg.markers && cfg.markers[0]) || 'Observed change',
+            checkins: [],
+            flags: { seenExpect: true },
+            baseline: { primary: 3, secondary: 3, date: startDate }
+          };
+
+          Storage.save(profile);
+          renderAllSections();
+
+          startGlide(function () {
+            scrollToSection('today');
+            UI.toast('Welcome, ' + profile.name + '! Your routine is ready.');
+          });
+        });
+      }
+    }
   }
 
   function play() {
     clearTimers();
     isGliding = false;
-    introEl.classList.remove('dismissed', 'playing', 'fading');
-    introEl.style.opacity = '1';
-    introEl.style.transition = '';
-    if (wordmark) {
-      wordmark.style.opacity = '';
-      wordmark.style.transition = '';
-    }
-    if (lettersEl) lettersEl.style.display = '';
-    if (canvasEl) {
-      canvasEl.style.display = '';
-      canvasEl.style.transform = '';
-      canvasEl.style.opacity = '';
+    if (headerIcon) {
+      headerIcon.style.opacity = '';
+      headerIcon.style.transition = '';
     }
     if (figure) {
       figure.style.transform = '';
       figure.style.transition = '';
     }
+    if (wordmark) {
+      wordmark.style.opacity = '';
+      wordmark.style.transition = '';
+      wordmark.style.display = '';
+    }
+    if (lettersEl) {
+      lettersEl.style.display = '';
+    }
+    if (beeStageEl) {
+      beeStageEl.style.display = 'none';
+      beeStageEl.style.opacity = '';
+    }
+    introEl.style.opacity = '';
+    introEl.style.transition = '';
 
+    introEl.classList.remove('dismissed', 'fading', 'playing');
     void introEl.offsetWidth; // restart CSS animations
     introEl.classList.add('playing');
     introEl.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
 
-    // Trigger smooth glide into header logo at 7.8s
-    timer = setTimeout(startGlide, GLIDE_TIME);
-
-    // Hard safety timeout: dismiss intro after 9.0s guaranteed
-    setTimeout(function () {
-      if (!introEl.classList.contains('dismissed')) {
-        dismissIntro();
-      }
-    }, 9000);
+    var prof = Storage.load();
+    if (!prof) {
+      // First visit: play brand intro animation (7.4s) then BEE character steps forward for questionnaire
+      introTimer = setTimeout(function () {
+        renderBeeOnboarding();
+      }, 7400);
+    } else {
+      // Returning user: play intro then glide into header logo
+      glideTimer = setTimeout(function () {
+        startGlide();
+      }, 7400);
+    }
   }
 
   window.replayIntro = function () {
     try { sessionStorage.removeItem('bwc_intro_seen'); } catch (e) {}
+    beeState.step = 0;
     play();
   };
 
+  window.replayIntroWithBee = function () {
+    try { sessionStorage.removeItem('bwc_intro_seen'); } catch (e) {}
+    beeState.step = 0;
+    clearTimers();
+    isGliding = false;
+    if (headerIcon) {
+      headerIcon.style.opacity = '';
+      headerIcon.style.transition = '';
+    }
+    if (figure) {
+      figure.style.transform = '';
+      figure.style.transition = '';
+    }
+    if (wordmark) {
+      wordmark.style.opacity = '';
+      wordmark.style.transition = '';
+      wordmark.style.display = '';
+    }
+    if (lettersEl) {
+      lettersEl.style.display = '';
+    }
+    if (beeStageEl) {
+      beeStageEl.style.display = 'none';
+      beeStageEl.style.opacity = '';
+    }
+    introEl.style.opacity = '';
+    introEl.style.transition = '';
+
+    introEl.classList.remove('dismissed', 'fading', 'playing');
+    void introEl.offsetWidth;
+    introEl.classList.add('playing');
+    introEl.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+
+    introTimer = setTimeout(function () {
+      renderBeeOnboarding();
+    }, 7400);
+  };
+
   if (skipBtn) {
-    skipBtn.addEventListener('click', function (e) {
-      e.stopPropagation();
+    skipBtn.addEventListener('click', function () {
+      var prof = Storage.load();
+      if (!prof) {
+        prof = Utils.getDefaultProfile();
+        Storage.save(prof);
+      }
+      renderAllSections();
       dismissIntro();
     });
   }
-
-  // Tapping anywhere on the intro stage immediately glides and reveals the website
-  introEl.addEventListener('click', function () {
-    startGlide();
-  });
 
   if (brandLogo) {
     brandLogo.addEventListener('click', function (e) {
@@ -4316,9 +4685,10 @@ function initIntroAnimation() {
 
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var seen = false;
-  try { seen = sessionStorage.getItem('bwc_intro_seen') === 'true'; } catch (e) {}
+  try { seen = (sessionStorage.getItem('bwc_intro_seen') === 'true'); } catch (e) {}
+  var hasProfile = !!Storage.load();
 
-  if (reduce || seen) {
+  if (hasProfile && (reduce || seen)) {
     dismissIntro();
     return;
   }
@@ -4330,6 +4700,7 @@ function initIntroAnimation() {
 function init() {
   renderAllSections();
   initIntroAnimation();
+  initScrollspy();
 
   var currentRenderedDate = Utils.getToday();
   function checkMidnightRollover() {
