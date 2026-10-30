@@ -4162,7 +4162,7 @@ function renderAllSections() {
 
   renderDesktopRail();
   renderSiteFooter();
-  UI.initScrollSpy();
+  
 }
 
 /* ==================== INTRO ANIMATION & MULTI-CONCERN BEE ONBOARDING ==================== */
@@ -4671,12 +4671,12 @@ function initIntroAnimation() {
       // Requirement 1: Hold completed logo until 9.2s, then trigger BEE
       introTimer = setTimeout(function () {
         renderBeeOnboarding();
-      }, 9200);
+      }, 8800);
     } else {
       // Returning user with active profile: glide smoothly into header logo at 9.2s
       introTimer = setTimeout(function () {
         startGlide();
-      }, 9200);
+      }, 8800);
     }
   }
 
@@ -4693,6 +4693,19 @@ function initIntroAnimation() {
   if (skipBtn) {
     skipBtn.addEventListener('click', function () {
       dismissIntro();
+    });
+  }
+
+  // Tapping anywhere on the intro stage after settlement immediately unlocks the website or launches BEE
+  if (introEl) {
+    introEl.addEventListener('click', function (e) {
+      if (e.target.closest('#bee-onboarding-stage')) return;
+      var existingProf = Storage.load();
+      if (existingProf) {
+        startGlide();
+      } else {
+        renderBeeOnboarding();
+      }
     });
   }
 
@@ -4746,4 +4759,8 @@ function init() {
   }
 }
 
-window.addEventListener('DOMContentLoaded', init);
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
