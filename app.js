@@ -2183,33 +2183,43 @@ function renderHeroSection(container) {
           '</div>' +
           (profile ? getPrimaryCard(profile) :
             '<div class="journey-line-visual">' +
+              '<div class="graph-tooltip-pill" id="hero-graph-tooltip">Hover over a milestone to inspect</div>' +
               '<svg class="journey-svg" viewBox="0 0 380 140" fill="none">' +
-                '<path d="M 20 110 C 100 105, 180 85, 260 55 C 300 40, 340 35, 360 30 L 360 120 L 20 120 Z" fill="#E6F2FC" opacity="0.6"/>' +
-                '<path class="signature-line" d="M 20 110 C 100 105, 180 85, 260 55 C 300 40, 340 35, 360 30" stroke="#0B5E9E" stroke-width="4" stroke-linecap="round"/>' +
-                '<circle class="milestone-dot" cx="20" cy="110" r="6" fill="#0B5E9E"/>' +
-                '<circle class="milestone-dot" cx="180" cy="85" r="6" fill="#0B5E9E"/>' +
-                '<circle class="milestone-dot" cx="360" cy="30" r="7" fill="#F26B1D"/>' +
+                '<defs>' +
+                  '<linearGradient id="heroCurveGrad" x1="0" y1="0" x2="0" y2="1">' +
+                    '<stop offset="0%" stop-color="#0B5E9E" stop-opacity="0.2"/>' +
+                    '<stop offset="100%" stop-color="#0B5E9E" stop-opacity="0.0"/>' +
+                  '</linearGradient>' +
+                '</defs>' +
+                '<path d="M 20 110 C 100 105, 180 85, 260 55 C 300 40, 340 35, 360 30 L 360 135 L 20 135 Z" fill="url(#heroCurveGrad)"/>' +
+                '<path class="signature-line" d="M 20 110 C 100 105, 180 85, 260 55 C 300 40, 340 35, 360 30" stroke="#0B5E9E" stroke-width="4.5" stroke-linecap="round"/>' +
+                '<circle class="milestone-dot graph-interactive-dot active" data-node="1" cx="20" cy="110" r="7" fill="#0B5E9E"/>' +
+                '<circle class="milestone-dot graph-interactive-dot" data-node="4" cx="180" cy="85" r="7" fill="#0284c7"/>' +
+                '<circle class="milestone-dot graph-interactive-dot" data-node="12" cx="360" cy="30" r="8" fill="#F26B1D"/>' +
               '</svg>' +
               '<div class="journey-milestones-grid">' +
-                '<div class="journey-milestone-node node-navy">' +
+                '<div class="journey-milestone-node node-navy active" data-node="1">' +
                   '<div class="milestone-node-dot"></div>' +
                   '<div class="milestone-node-info">' +
                     '<span class="milestone-node-time">Week 1</span>' +
                     '<span class="milestone-node-title">Foundation</span>' +
+                    '<span class="milestone-node-sub">Habit anchoring</span>' +
                   '</div>' +
                 '</div>' +
-                '<div class="journey-milestone-node node-blue">' +
+                '<div class="journey-milestone-node node-blue" data-node="4">' +
                   '<div class="milestone-node-dot"></div>' +
                   '<div class="milestone-node-info">' +
                     '<span class="milestone-node-time">Week 4</span>' +
                     '<span class="milestone-node-title">Early signs</span>' +
+                    '<span class="milestone-node-sub">Cellular shift</span>' +
                   '</div>' +
                 '</div>' +
-                '<div class="journey-milestone-node node-coral">' +
+                '<div class="journey-milestone-node node-coral" data-node="12">' +
                   '<div class="milestone-node-dot"></div>' +
                   '<div class="milestone-node-info">' +
                     '<span class="milestone-node-time">Week 12</span>' +
                     '<span class="milestone-node-title">Real change</span>' +
+                    '<span class="milestone-node-sub">Visible density</span>' +
                   '</div>' +
                 '</div>' +
               '</div>' +
@@ -2221,6 +2231,35 @@ function renderHeroSection(container) {
   '</div>';
 
   container.innerHTML = html;
+
+  // Interactive Graph Hover & Inspection
+  var tooltipEl = container.querySelector('#hero-graph-tooltip');
+  var nodeInfos = {
+    '1': 'Week 1: Habit anchoring & cellular absorption prep',
+    '4': 'Week 4: Early cellular shifts & shedding normalization',
+    '12': 'Week 12: Measurable visible density & barrier health'
+  };
+
+  container.querySelectorAll('.journey-milestone-node, .graph-interactive-dot').forEach(function (el) {
+    el.addEventListener('mouseenter', function () {
+      var n = this.getAttribute('data-node');
+      container.querySelectorAll('.journey-milestone-node, .graph-interactive-dot').forEach(function (item) {
+        if (item.getAttribute('data-node') === n) {
+          item.classList.add('active');
+        } else {
+          item.classList.remove('active');
+        }
+      });
+      if (tooltipEl && nodeInfos[n]) {
+        tooltipEl.textContent = nodeInfos[n];
+        tooltipEl.classList.add('visible');
+      }
+    });
+
+    el.addEventListener('mouseleave', function () {
+      if (tooltipEl) tooltipEl.classList.remove('visible');
+    });
+  });
 
   var getStartedBtn = container.querySelector('#hero-get-started');
   if (getStartedBtn) {
@@ -2965,6 +3004,21 @@ function renderCheckinSection(container) {
   }
 }
 
+
+function getMilestoneForWeek(cfg, w) {
+  var list = (cfg && cfg.milestones) || [];
+  for (var i = 0; i < list.length; i++) {
+    var ms = list[i];
+    var fw = ms.fromWeek || 1;
+    var tw = ms.toWeek || fw;
+    if (w >= fw && w <= tw) return ms;
+  }
+  if (list.length > 0 && w >= list[list.length - 1].toWeek) {
+    return list[list.length - 1];
+  }
+  return list[0] || { fromWeek: 1, toWeek: 2, title: 'Adjusting', beneath: 'Cellular adjustments underway.', expect: 'Normal pace of progress.' };
+}
+
 /* ---- Section 5: Timeline (Upgraded Timeline Placards with Beneath & Expect Bullets) ---- */
 function renderTimelineSection(container) {
   var profile = Storage.load();
@@ -2996,60 +3050,76 @@ function renderTimelineSection(container) {
     ? ('First changes usually from week ' + cfg.earlyWindowWeeks + '. About ' + weeksLeft + ' weeks to go.')
     : ('Past week ' + cfg.earlyWindowWeeks + '. Deeper changes build with continued routine.');
 
+  var initialMs = getMilestoneForWeek(cfg, currentWk);
+  var initFromW = initialMs.fromWeek || 1;
+  var initToW = initialMs.toWeek || initFromW;
+  var initDur = (initFromW === initToW) ? ('Week ' + initFromW) : ('Weeks ' + initFromW + '–' + initToW);
+  var initBeneath = initialMs.beneath || (initialMs.text ? initialMs.text.split('.')[0] + '.' : 'Cellular adjustments underway.');
+  var initExpect = initialMs.expect || (initialMs.text && initialMs.text.indexOf('.') !== -1 ? initialMs.text.substring(initialMs.text.indexOf('.') + 1).trim() : (initialMs.text || 'Normal pace of progress.'));
+
   var html = '<div class="container">' +
-    '<div class="section-header">' +
+    '<div class="section-header text-center">' +
       '<h2 class="section-title">Your timeline</h2>' +
       '<p class="section-subline">Week ' + currentWk + ' of ' + cfg.fullWindowWeeks + ' · ' + escHTML(cfg.label) + ' routine</p>' +
     '</div>' +
 
-    '<div class="timeline-grid">' +
-      // Left Column: Modern Timeline Placards with Duration & Status Tags
-      '<div class="timeline-left-col">' +
-        '<div class="timeline-placards-list timeline">';
-
-  (cfg.milestones || []).forEach(function (ms) {
-    var fromW = ms.fromWeek || 1;
-    var toW = ms.toWeek || fromW;
-    var durationLabel = (fromW === toW) ? ('Week ' + fromW) : ('Weeks ' + fromW + '–' + toW);
-
-    var isPassed = (currentWk > toW);
-    var isCurrent = (currentWk >= fromW && currentWk <= toW);
-    var statusClass = isPassed ? 'completed' : (isCurrent ? 'current' : 'upcoming');
-    var statusText = isPassed ? 'Completed' : (isCurrent ? 'Current' : 'Upcoming');
-
-    var beneathText = ms.beneath || (ms.text ? ms.text.split('.')[0] + '.' : 'Cellular adjustments underway.');
-    var expectText = ms.expect || (ms.text && ms.text.indexOf('.') !== -1 ? ms.text.substring(ms.text.indexOf('.') + 1).trim() : (ms.text || 'Normal pace of progress.'));
-
-    html += '<div class="timeline-placard milestone' + (isPassed ? ' passed passed-placard' : '') + (isCurrent ? ' current current-placard' : '') + '">' +
-      '<div class="placard-header">' +
-        '<span class="placard-duration milestone-badge">' + durationLabel + '</span>' +
-        '<span class="placard-status-badge milestone-badge-tag ' + statusClass + '">' +
-          (isCurrent ? '<span class="status-pulse-dot"></span> ' : '') + statusText +
-        '</span>' +
-      '</div>' +
-      (isCurrent ? '<div class="placard-you-are-here">You are here in your journey</div>' : '') +
-      '<h3 class="placard-title milestone-title">' + escHTML(ms.title) + '</h3>' +
-      '<div class="placard-bullets milestone-content">' +
-        '<div class="placard-bullet">' +
-          '<span class="placard-bullet-label">What is happening beneath:</span>' +
-          '<span class="placard-bullet-text">' + escHTML(beneathText) + '</span>' +
+    '<div class="timeline-interactive-stage">' +
+      // The Dynamic Floating Informatics Card (Hovering above the week track - Image 2)
+      '<div class="timeline-informatics-card timeline-placard current current-placard" id="timeline-informatics-card">' +
+        '<div class="placard-header">' +
+          '<div class="placard-meta-row">' +
+            '<span class="placard-duration milestone-badge" id="info-duration">' + initDur + '</span>' +
+            '<span class="placard-status-badge milestone-badge-tag current" id="info-status">' +
+              '<span class="status-pulse-dot"></span> Current' +
+            '</span>' +
+          '</div>' +
+          '<div class="placard-you-are-here" id="info-you-are-here">You are here in your journey</div>' +
         '</div>' +
-        '<div class="placard-bullet">' +
-          '<span class="placard-bullet-label">What to expect:</span>' +
-          '<span class="placard-bullet-text">' + escHTML(expectText) + '</span>' +
+        '<h3 class="placard-title milestone-title" id="info-title">' + escHTML(initialMs.title) + '</h3>' +
+        '<div class="placard-bullets milestone-content">' +
+          '<div class="placard-bullet">' +
+            '<span class="placard-bullet-label">What is happening beneath:</span>' +
+            '<span class="placard-bullet-text" id="info-beneath">' + escHTML(initBeneath) + '</span>' +
+          '</div>' +
+          '<div class="placard-bullet">' +
+            '<span class="placard-bullet-label">What to expect:</span>' +
+            '<span class="placard-bullet-text" id="info-expect">' + escHTML(initExpect) + '</span>' +
+          '</div>' +
         '</div>' +
+        '<div class="informatics-pointer-arrow" id="informatics-pointer"></div>' +
       '</div>' +
+
+      // 12-Week Interactive Scrubber Track (Image 3)
+      '<div class="timeline-scrubber-wrapper">' +
+        '<div class="timeline-scrubber-track" id="timeline-scrubber-track">';
+
+  for (var w = 1; w <= cfg.fullWindowWeeks; w++) {
+    var isCur = (w === currentWk);
+    var isEarly = (w < cfg.earlyWindowWeeks);
+    var isMid = (w >= cfg.earlyWindowWeeks && w < cfg.earlyWindowWeeks + 4);
+    var phaseName = isEarly ? 'Adjusting' : (isMid ? 'Early signs' : 'Steadier');
+
+    html += '<div class="interactive-week-card' + (isCur ? ' is-current scrub-active' : '') + '" data-week="' + w + '">' +
+      (isCur ? '<span class="scrub-current-tag">You are here</span>' : '') +
+      '<span class="scrub-week-pill">W' + w + '</span>';
+
+    if (isEarly) {
+      html += '<svg class="scrub-week-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>';
+    } else if (isMid) {
+      html += '<svg class="scrub-week-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/></svg>';
+    } else {
+      html += '<svg class="scrub-week-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>';
+    }
+
+    html += '<span class="scrub-week-label">' + phaseName + '</span>' +
     '</div>';
-  });
+  }
 
   html += '</div></div>' +
-
-      // Right Column: Forecast strip & expectation comparison
-      '<div class="timeline-sticky-col">' +
-        renderForecastStripHTML(cfg, profile) +
-        '<p class="status-line mb-16" style="font-weight:600;">' + etaText + '</p>' +
-        '<div class="card mb-16">' +
-          '<h3 class="card-title" style="font-size:1.05rem;margin-bottom:8px;">Why pace matters</h3>' +
+      '<div style="max-width:680px;width:100%;margin-top:10px;">' +
+        '<p class="status-line mb-16 text-center" style="font-weight:600;">' + etaText + '</p>' +
+        '<div class="card text-center" style="padding:20px 24px;">' +
+          '<h3 class="card-title" style="font-size:1.05rem;margin-bottom:6px;">Why pace matters</h3>' +
           '<p class="card-text" style="font-size:0.9rem;">' + escHTML(cfg.why) + '</p>' +
         '</div>' +
       '</div>' +
@@ -3057,7 +3127,89 @@ function renderTimelineSection(container) {
   '</div>';
 
   container.innerHTML = html;
+
+  var trackEl = container.querySelector('#timeline-scrubber-track');
+  var cardEl = container.querySelector('#timeline-informatics-card');
+  var durEl = container.querySelector('#info-duration');
+  var statusEl = container.querySelector('#info-status');
+  var yahEl = container.querySelector('#info-you-are-here');
+  var titleEl = container.querySelector('#info-title');
+  var beneathEl = container.querySelector('#info-beneath');
+  var expectEl = container.querySelector('#info-expect');
+  var arrowEl = container.querySelector('#informatics-pointer');
+
+  function updateScrubberToWeek(targetW, activeCardEl) {
+    var ms = getMilestoneForWeek(cfg, targetW);
+    var fw = ms.fromWeek || 1;
+    var tw = ms.toWeek || fw;
+    var durLabel = (fw === tw) ? ('Week ' + fw) : ('Weeks ' + fw + '–' + tw);
+    var isPass = (currentWk > tw);
+    var isCur = (currentWk >= fw && currentWk <= tw);
+    var statusClass = isPass ? 'completed' : (isCur ? 'current' : 'upcoming');
+    var statusText = isPass ? 'Completed' : (isCur ? 'Current' : 'Upcoming');
+
+    var bText = ms.beneath || (ms.text ? ms.text.split('.')[0] + '.' : 'Cellular adjustments underway.');
+    var eText = ms.expect || (ms.text && ms.text.indexOf('.') !== -1 ? ms.text.substring(ms.text.indexOf('.') + 1).trim() : (ms.text || 'Normal pace of progress.'));
+
+    if (durEl) durEl.textContent = durLabel;
+    if (statusEl) {
+      statusEl.className = 'placard-status-badge milestone-badge-tag ' + statusClass;
+      statusEl.innerHTML = (isCur ? '<span class="status-pulse-dot"></span> ' : '') + statusText;
+    }
+    if (yahEl) {
+      yahEl.style.display = (targetW === currentWk) ? 'inline-block' : 'none';
+    }
+    if (titleEl) titleEl.textContent = ms.title;
+    if (beneathEl) beneathEl.textContent = bText;
+    if (expectEl) expectEl.textContent = eText;
+
+    if (activeCardEl && arrowEl && trackEl && cardEl) {
+      var trackRect = trackEl.getBoundingClientRect();
+      var cardRect = cardEl.getBoundingClientRect();
+      var activeRect = activeCardEl.getBoundingClientRect();
+      var centerRelative = (activeRect.left + activeRect.width / 2) - cardRect.left;
+      var clampCenter = Math.max(24, Math.min(cardRect.width - 24, centerRelative));
+      arrowEl.style.left = clampCenter + 'px';
+    }
+
+    container.querySelectorAll('.interactive-week-card').forEach(function (c) {
+      if (parseInt(c.getAttribute('data-week'), 10) === targetW) {
+        c.classList.add('scrub-active');
+      } else {
+        c.classList.remove('scrub-active');
+      }
+    });
+  }
+
+  // Initial arrow alignment
+  var currentCardEl = container.querySelector('.interactive-week-card[data-week="' + currentWk + '"]');
+  if (currentCardEl) {
+    setTimeout(function () {
+      updateScrubberToWeek(currentWk, currentCardEl);
+    }, 50);
+  }
+
+  // Scrub listeners on cards
+  container.querySelectorAll('.interactive-week-card').forEach(function (card) {
+    card.addEventListener('mouseenter', function () {
+      var w = parseInt(this.getAttribute('data-week'), 10);
+      updateScrubberToWeek(w, this);
+    });
+
+    card.addEventListener('click', function () {
+      var w = parseInt(this.getAttribute('data-week'), 10);
+      updateScrubberToWeek(w, this);
+    });
+  });
+
+  if (trackEl) {
+    trackEl.addEventListener('mouseleave', function () {
+      var curCard = container.querySelector('.interactive-week-card[data-week="' + currentWk + '"]');
+      if (curCard) updateScrubberToWeek(currentWk, curCard);
+    });
+  }
 }
+
 
 /* ---- Section 6: Mind Space (Breathing Pacer, Affirmation & Emotional Weather) ---- */
 function renderMindSection(container) {
@@ -3601,7 +3753,10 @@ function openSettingsDrawer() {
   var html = '<div class="card mb-16">' +
     '<h3 class="card-title" style="font-size:1rem;margin-bottom:8px;">Brand Intro</h3>' +
     '<p class="card-text mb-12" style="font-size:0.88rem;">Watch the 6-second lilac handwritten logo story animation.</p>' +
-    '<button type="button" class="btn btn-secondary btn-sm" id="btn-replay-intro">Replay Brand Intro</button>' +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+      '<button type="button" class="btn btn-secondary btn-sm" id="btn-replay-intro">Replay Brand Intro</button>' +
+      '<button type="button" class="btn btn-primary btn-sm" id="btn-replay-bee">Guide Walkthrough (BEE)</button>' +
+    '</div>' +
   '</div>' +
 
   '<div class="card mb-16">' +
@@ -3639,6 +3794,16 @@ function openSettingsDrawer() {
       });
     }
 
+    var replayBeeBtn = panelEl.querySelector('#btn-replay-bee');
+    if (replayBeeBtn) {
+      replayBeeBtn.addEventListener('click', function () {
+        Drawer.close();
+        if (typeof window.replayIntroWithBee === 'function') {
+          window.replayIntroWithBee();
+        }
+      });
+    }
+
     var exportBtn = panelEl.querySelector('#btn-export-json');
     if (exportBtn) {
       exportBtn.addEventListener('click', function () {
@@ -3668,6 +3833,7 @@ function openSettingsDrawer() {
 
         panelEl.querySelector('#btn-confirm-reset').addEventListener('click', function () {
           Storage.reset();
+          try { sessionStorage.removeItem('bwc_intro_seen'); } catch (e) {}
           clearDraft();
           Drawer.close();
           window.location.hash = '';
@@ -3877,53 +4043,479 @@ function renderAllSections() {
   }
 }
 
-/* ==================== BRAND INTRO ANIMATION CONTROLLER ==================== */
+/* ==================== CINEMATIC BRAND INTRO & BEE ONBOARDING CONTROLLER ==================== */
 function initIntroAnimation() {
   var introEl = document.getElementById('intro-stage');
   if (!introEl) return;
-  var TOTAL = 8600;
-  var timer = null;
+
+  var skipBtn = document.getElementById('intro-skip-btn');
+  var brandLogo = document.getElementById('brand-logo');
+  var headerIcon = brandLogo ? (brandLogo.querySelector('.guide-avatar-badge') || brandLogo) : null;
+  var figure = document.getElementById('intro-final-figure');
+  var wordmark = document.getElementById('intro-wordmark');
+  var lettersEl = document.getElementById('intro-letters');
+  var canvasEl = document.getElementById('intro-canvas');
+  var beeStageEl = document.getElementById('bee-onboarding-stage');
+
+  var beeState = {
+    step: 0,
+    name: '',
+    concern: 'hair',
+    ownedProducts: [],
+    routineTime: 'morning',
+    startBucket: 'notYet'
+  };
+
+  var introTimer = null;
+  var glideTimer = null;
+  var landTimer = null;
+
+  function clearTimers() {
+    if (introTimer) clearTimeout(introTimer);
+    if (glideTimer) clearTimeout(glideTimer);
+    if (landTimer) clearTimeout(landTimer);
+  }
 
   function dismissIntro() {
-    if (timer) clearTimeout(timer);
+    clearTimers();
     try { sessionStorage.setItem('bwc_intro_seen', 'true'); } catch (e) {}
-    introEl.classList.remove('playing');
+    introEl.classList.remove('playing', 'fading');
     introEl.classList.add('dismissed');
     introEl.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
   }
 
+  function startGlide(onDone) {
+    if (!introEl || introEl.classList.contains('dismissed')) {
+      if (typeof onDone === 'function') onDone();
+      return;
+    }
+
+    var targetEl = headerIcon || (brandLogo ? brandLogo.querySelector('.guide-avatar-badge') : null) || brandLogo;
+    if (targetEl && figure) {
+      var targetRect = targetEl.getBoundingClientRect();
+      var figRect = figure.getBoundingClientRect();
+
+      if (figRect.width > 0 && figRect.height > 0 && targetRect.width > 0) {
+        var figCenterX = figRect.left + figRect.width / 2;
+        var figCenterY = figRect.top + figRect.height / 2;
+        var targetCenterX = targetRect.left + targetRect.width / 2;
+        var targetCenterY = targetRect.top + targetRect.height / 2;
+
+        var dx = targetCenterX - figCenterX;
+        var dy = targetCenterY - figCenterY;
+        var scale = targetRect.height / figRect.height;
+
+        targetEl.style.opacity = '0';
+        targetEl.style.transition = 'opacity 0.15s ease';
+
+        figure.style.transition = 'transform 0.9s cubic-bezier(0.4, 0, 0.2, 1)';
+        figure.style.transformOrigin = 'center center';
+        figure.style.transform = 'translate(' + dx.toFixed(2) + 'px, ' + dy.toFixed(2) + 'px) scale(' + scale.toFixed(4) + ')';
+
+        introEl.classList.add('fading');
+        if (wordmark) {
+          wordmark.style.transition = 'opacity 0.5s ease';
+          wordmark.style.opacity = '0';
+        }
+        if (beeStageEl) {
+          beeStageEl.style.transition = 'opacity 0.5s ease';
+          beeStageEl.style.opacity = '0';
+        }
+        introEl.style.transition = 'opacity 0.9s cubic-bezier(0.4, 0, 0.2, 1)';
+        introEl.style.opacity = '0';
+      }
+    }
+
+    landTimer = setTimeout(function () {
+      if (targetEl) targetEl.style.opacity = '1';
+      dismissIntro();
+      if (typeof onDone === 'function') onDone();
+    }, 950);
+  }
+
+  function renderBeeOnboarding() {
+    if (!beeStageEl) return;
+    if (lettersEl) lettersEl.style.display = 'none';
+    if (wordmark) wordmark.style.display = 'none';
+    if (canvasEl) {
+      canvasEl.style.transition = 'transform 0.5s ease';
+      canvasEl.style.transform = 'scale(0.65) translateY(-30px)';
+    }
+
+    beeStageEl.style.display = 'flex';
+    beeStageEl.style.opacity = '1';
+
+    var step = beeState.step;
+    var stepHtml = '';
+
+    if (step === 0) {
+      // Step 0: Name Greeting
+      stepHtml = '<div class="bee-character-card">' +
+        '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
+        '<div class="bee-speech-bubble">' +
+          '<h3 class="bee-greeting-title">Hi! My name is BEE! What\'s yours?</h3>' +
+          '<p class="bee-greeting-sub">I will walk you through your wellness routine step by step.</p>' +
+        '</div>' +
+        '<div class="bee-input-group">' +
+          '<input type="text" class="bee-input-name" id="bee-name-input" placeholder="Type your first name..." value="' + escHTML(beeState.name) + '" maxlength="30" autofocus />' +
+          '<button type="button" class="btn btn-primary" id="bee-name-submit">Continue &rarr;</button>' +
+        '</div>' +
+      '</div>';
+    } else if (step === 1) {
+      // Step 1: Concern Focus
+      stepHtml = '<div class="bee-character-card">' +
+        '<div class="bee-steps-indicator">' +
+          '<span class="bee-step-dot active"></span>' +
+          '<span class="bee-step-dot"></span>' +
+          '<span class="bee-step-dot"></span>' +
+          '<span class="bee-step-dot"></span>' +
+        '</div>' +
+        '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
+        '<div class="bee-speech-bubble">' +
+          '<h3 class="bee-greeting-title">Nice to meet you, ' + escHTML(beeState.name) + '!</h3>' +
+          '<p class="bee-greeting-sub">What is your primary wellness focus right now?</p>' +
+        '</div>' +
+        '<div class="bee-options-grid">' +
+          CONTENT.quiz.concerns.map(function (c) {
+            var isSel = (beeState.concern === c.value);
+            return '<button type="button" class="bee-choice-btn' + (isSel ? ' selected' : '') + '" data-concern="' + c.value + '">' +
+              '<span class="bee-choice-title">' + escHTML(c.label) + '</span>' +
+              '<span class="bee-choice-desc">Personalized biological timeline</span>' +
+            '</button>';
+          }).join('') +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;width:100%;margin-top:10px;">' +
+          '<button type="button" class="btn btn-secondary btn-sm" id="bee-prev">Back</button>' +
+          '<button type="button" class="btn btn-primary btn-sm" id="bee-next-focus">Next step &rarr;</button>' +
+        '</div>' +
+      '</div>';
+    } else if (step === 2) {
+      // Step 2: Owned Formulas Checklist
+      var catalog = CONTENT.catalog[beeState.concern] || [];
+      stepHtml = '<div class="bee-character-card">' +
+        '<div class="bee-steps-indicator">' +
+          '<span class="bee-step-dot"></span>' +
+          '<span class="bee-step-dot active"></span>' +
+          '<span class="bee-step-dot"></span>' +
+          '<span class="bee-step-dot"></span>' +
+        '</div>' +
+        '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
+        '<div class="bee-speech-bubble">' +
+          '<h3 class="bee-greeting-title">Do you already have formulas at home?</h3>' +
+          '<p class="bee-greeting-sub">Select every product you currently have with you.</p>' +
+        '</div>' +
+        '<div style="display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;max-height:200px;overflow-y:auto;padding:2px;">' +
+          catalog.map(function (p) {
+            var isChk = (beeState.ownedProducts.indexOf(p.id) >= 0);
+            return '<div class="shelf-product-item' + (isChk ? ' selected focus-ring-active' : '') + '" data-prod-id="' + p.id + '" style="cursor:pointer;padding:10px 14px;background:#F8FAFC;border:1.5px solid ' + (isChk ? '#0B5E9E' : '#E2E8F0') + ';border-radius:12px;display:flex;align-items:center;gap:10px;">' +
+              '<div class="shelf-checkbox" style="width:20px;height:20px;border-radius:6px;border:1.5px solid ' + (isChk ? '#0B5E9E' : '#CBD5E1') + ';background:' + (isChk ? '#0B5E9E' : '#FFFFFF') + ';display:flex;align-items:center;justify-content:center;color:#FFFFFF;">' + (isChk ? ICONS.check : '') + '</div>' +
+              '<span style="font-size:0.9rem;font-weight:600;color:#0F2D5E;">' + escHTML(p.name) + '</span>' +
+            '</div>';
+          }).join('') +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;width:100%;margin-top:10px;">' +
+          '<button type="button" class="btn btn-secondary btn-sm" id="bee-prev">Back</button>' +
+          '<button type="button" class="btn btn-primary btn-sm" id="bee-next-shelf">Next step &rarr;</button>' +
+        '</div>' +
+      '</div>';
+    } else if (step === 3) {
+      // Step 3: Routine Timing & Start Date
+      stepHtml = '<div class="bee-character-card">' +
+        '<div class="bee-steps-indicator">' +
+          '<span class="bee-step-dot"></span>' +
+          '<span class="bee-step-dot"></span>' +
+          '<span class="bee-step-dot active"></span>' +
+          '<span class="bee-step-dot"></span>' +
+        '</div>' +
+        '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
+        '<div class="bee-speech-bubble">' +
+          '<h3 class="bee-greeting-title">When can you fit it into your day?</h3>' +
+          '<p class="bee-greeting-sub">Realistic routines build quiet daily momentum.</p>' +
+        '</div>' +
+        '<div style="width:100%;text-align:left;">' +
+          '<div style="font-size:0.85rem;font-weight:700;color:#0F2D5E;margin-bottom:8px;">Preferred daily time:</div>' +
+          '<div class="chip-group mb-16" style="display:flex;gap:8px;">' +
+            '<button type="button" class="chip' + (beeState.routineTime === 'morning' ? ' selected focus-ring-active' : '') + '" data-time="morning">Morning only</button>' +
+            '<button type="button" class="chip' + (beeState.routineTime === 'night' ? ' selected focus-ring-active' : '') + '" data-time="night">Night only</button>' +
+            '<button type="button" class="chip' + (beeState.routineTime === 'both' ? ' selected focus-ring-active' : '') + '" data-time="both">Both AM & PM</button>' +
+          '</div>' +
+          '<div style="font-size:0.85rem;font-weight:700;color:#0F2D5E;margin-bottom:8px;">When did you start:</div>' +
+          '<div class="chip-group" style="display:flex;gap:8px;">' +
+            '<button type="button" class="chip' + (beeState.startBucket === 'notYet' ? ' selected focus-ring-active' : '') + '" data-bucket="notYet">Starting today</button>' +
+            '<button type="button" class="chip' + (beeState.startBucket === 'under1m' ? ' selected focus-ring-active' : '') + '" data-bucket="under1m">Past 2 weeks</button>' +
+            '<button type="button" class="chip' + (beeState.startBucket === '1to3m' ? ' selected focus-ring-active' : '') + '" data-bucket="1to3m">1 to 2 months ago</button>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;width:100%;margin-top:14px;">' +
+          '<button type="button" class="btn btn-secondary btn-sm" id="bee-prev">Back</button>' +
+          '<button type="button" class="btn btn-primary btn-sm" id="bee-finish-routine">Build My Routine &rarr;</button>' +
+        '</div>' +
+      '</div>';
+    } else if (step === 4) {
+      // Step 4: Celebration & Enter Companion
+      stepHtml = '<div class="bee-character-card">' +
+        '<div class="bee-avatar-hero" style="width:96px;height:96px;border-color:#10B981;background:#ECFDF5;color:#047857;">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
+        '<div class="bee-speech-bubble" style="background:#F0FDF4;border-color:#BBF7D0;">' +
+          '<h3 class="bee-greeting-title" style="color:#065F46;">Your routine is ready, ' + escHTML(beeState.name) + '!</h3>' +
+          '<p class="bee-greeting-sub" style="color:#047857;">Your personal companion is saved privately on your device. I\'ll be right beside you every step.</p>' +
+        '</div>' +
+        '<button type="button" class="btn btn-primary" id="bee-enter-app" style="width:100%;padding:14px 20px;font-size:1.05rem;">Enter My Companion &rarr;</button>' +
+      '</div>';
+    }
+
+    beeStageEl.innerHTML = stepHtml;
+
+    // Bindings for each step
+    if (step === 0) {
+      var nameInput = beeStageEl.querySelector('#bee-name-input');
+      var nameBtn = beeStageEl.querySelector('#bee-name-submit');
+      function submitName() {
+        var val = (nameInput.value || '').trim();
+        beeState.name = val ? Utils.toTitleCase(val) : 'Friend';
+        beeState.step = 1;
+        renderBeeOnboarding();
+      }
+      if (nameBtn) nameBtn.addEventListener('click', submitName);
+      if (nameInput) {
+        nameInput.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') submitName();
+        });
+      }
+    } else if (step === 1) {
+      beeStageEl.querySelectorAll('[data-concern]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          beeState.concern = this.getAttribute('data-concern');
+          beeState.ownedProducts = [];
+          beeStageEl.querySelectorAll('[data-concern]').forEach(function (b) { b.classList.remove('selected'); });
+          this.classList.add('selected');
+        });
+      });
+      var nextFocusBtn = beeStageEl.querySelector('#bee-next-focus');
+      if (nextFocusBtn) {
+        nextFocusBtn.addEventListener('click', function () {
+          beeState.step = 2;
+          renderBeeOnboarding();
+        });
+      }
+      var backBtn1 = beeStageEl.querySelector('#bee-prev');
+      if (backBtn1) {
+        backBtn1.addEventListener('click', function () {
+          beeState.step = 0;
+          renderBeeOnboarding();
+        });
+      }
+    } else if (step === 2) {
+      beeStageEl.querySelectorAll('.shelf-product-item').forEach(function (item) {
+        item.addEventListener('click', function () {
+          var pid = this.getAttribute('data-prod-id');
+          var idx = beeState.ownedProducts.indexOf(pid);
+          if (idx >= 0) {
+            beeState.ownedProducts.splice(idx, 1);
+          } else {
+            beeState.ownedProducts.push(pid);
+          }
+          renderBeeOnboarding();
+        });
+      });
+      var nextShelfBtn = beeStageEl.querySelector('#bee-next-shelf');
+      if (nextShelfBtn) {
+        nextShelfBtn.addEventListener('click', function () {
+          beeState.step = 3;
+          renderBeeOnboarding();
+        });
+      }
+      var backBtn2 = beeStageEl.querySelector('#bee-prev');
+      if (backBtn2) {
+        backBtn2.addEventListener('click', function () {
+          beeState.step = 1;
+          renderBeeOnboarding();
+        });
+      }
+    } else if (step === 3) {
+      beeStageEl.querySelectorAll('[data-time]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          beeState.routineTime = this.getAttribute('data-time');
+          renderBeeOnboarding();
+        });
+      });
+      beeStageEl.querySelectorAll('[data-bucket]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          beeState.startBucket = this.getAttribute('data-bucket');
+          renderBeeOnboarding();
+        });
+      });
+      var finishBtn = beeStageEl.querySelector('#bee-finish-routine');
+      if (finishBtn) {
+        finishBtn.addEventListener('click', function () {
+          beeState.step = 4;
+          renderBeeOnboarding();
+        });
+      }
+      var backBtn3 = beeStageEl.querySelector('#bee-prev');
+      if (backBtn3) {
+        backBtn3.addEventListener('click', function () {
+          beeState.step = 2;
+          renderBeeOnboarding();
+        });
+      }
+    } else if (step === 4) {
+      var enterBtn = beeStageEl.querySelector('#bee-enter-app');
+      if (enterBtn) {
+        enterBtn.addEventListener('click', function () {
+          var concern = beeState.concern || 'hair';
+          var cfg = Utils.getConcernConfig(concern);
+          var catalogList = CONTENT.catalog[concern] || [];
+          var ownedList = (beeState.ownedProducts || []).map(function (pid) {
+            var match = catalogList.find(function (c) { return c.id === pid; });
+            return match || { id: pid, name: 'Targeted formula', sizeDays: 30 };
+          });
+          if (!ownedList.length && catalogList.length) {
+            ownedList.push(catalogList[0]);
+          }
+
+          var startDate = Utils.getStartDateFromBucket(beeState.startBucket || 'notYet');
+          var profile = {
+            version: 3,
+            name: beeState.name || 'Friend',
+            concern: concern,
+            startDate: startDate,
+            startBucket: beeState.startBucket || 'notYet',
+            routineTime: beeState.routineTime || 'morning',
+            products: ownedList,
+            marker: (cfg.markers && cfg.markers[0]) || 'Observed change',
+            checkins: [],
+            flags: { seenExpect: true },
+            baseline: { primary: 3, secondary: 3, date: startDate }
+          };
+
+          Storage.save(profile);
+          renderAllSections();
+
+          startGlide(function () {
+            scrollToSection('today');
+            UI.toast('Welcome, ' + profile.name + '! Your routine is ready.');
+          });
+        });
+      }
+    }
+  }
+
   function play() {
-    if (timer) clearTimeout(timer);
-    introEl.classList.remove('dismissed', 'playing');
+    clearTimers();
+    if (headerIcon) {
+      headerIcon.style.opacity = '';
+      headerIcon.style.transition = '';
+    }
+    if (figure) {
+      figure.style.transform = '';
+      figure.style.transition = '';
+    }
+    if (wordmark) {
+      wordmark.style.opacity = '';
+      wordmark.style.transition = '';
+      wordmark.style.display = '';
+    }
+    if (lettersEl) {
+      lettersEl.style.display = '';
+    }
+    if (beeStageEl) {
+      beeStageEl.style.display = 'none';
+      beeStageEl.style.opacity = '';
+    }
+    introEl.style.opacity = '';
+    introEl.style.transition = '';
+
+    introEl.classList.remove('dismissed', 'fading', 'playing');
     void introEl.offsetWidth; // restart CSS animations
     introEl.classList.add('playing');
     introEl.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
-    timer = setTimeout(dismissIntro, TOTAL);
+
+    var prof = Storage.load();
+    if (!prof) {
+      // Force user through BEE character onboarding takeover!
+      introTimer = setTimeout(function () {
+        renderBeeOnboarding();
+      }, 5000);
+    } else {
+      // Returning user replay
+      glideTimer = setTimeout(function () {
+        startGlide();
+      }, 7400);
+    }
   }
 
   window.replayIntro = function () {
     try { sessionStorage.removeItem('bwc_intro_seen'); } catch (e) {}
+    beeState.step = 0;
     play();
   };
 
-  var skipBtn = document.getElementById('intro-skip-btn');
-  if (skipBtn) skipBtn.addEventListener('click', dismissIntro);
+  window.replayIntroWithBee = function () {
+    try { sessionStorage.removeItem('bwc_intro_seen'); } catch (e) {}
+    beeState.step = 0;
+    clearTimers();
+    if (headerIcon) {
+      headerIcon.style.opacity = '';
+      headerIcon.style.transition = '';
+    }
+    if (figure) {
+      figure.style.transform = '';
+      figure.style.transition = '';
+    }
+    if (wordmark) {
+      wordmark.style.opacity = '';
+      wordmark.style.transition = '';
+      wordmark.style.display = '';
+    }
+    if (lettersEl) {
+      lettersEl.style.display = '';
+    }
+    if (beeStageEl) {
+      beeStageEl.style.display = 'none';
+      beeStageEl.style.opacity = '';
+    }
+    introEl.style.opacity = '';
+    introEl.style.transition = '';
 
-  var brandLogo = document.getElementById('brand-logo');
+    introEl.classList.remove('dismissed', 'fading', 'playing');
+    void introEl.offsetWidth;
+    introEl.classList.add('playing');
+    introEl.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+
+    introTimer = setTimeout(function () {
+      renderBeeOnboarding();
+    }, 5000);
+  };
+
+  if (skipBtn) {
+    skipBtn.addEventListener('click', dismissIntro);
+  }
+
   if (brandLogo) {
     brandLogo.addEventListener('click', function (e) {
-      if (e.shiftKey) { e.preventDefault(); window.replayIntro(); }
+      if (e.shiftKey) {
+        e.preventDefault();
+        window.replayIntro();
+      }
     });
   }
 
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var seen = false;
-  try { seen = sessionStorage.getItem('bwc_intro_seen') === 'true'; } catch (e) {}
-  if (reduce || seen) { dismissIntro(); return; }
+  try { seen = (sessionStorage.getItem('bwc_intro_seen') === 'true'); } catch (e) {}
+  var hasProfile = !!Storage.load();
+
+  if (hasProfile && (reduce || seen)) {
+    dismissIntro();
+    return;
+  }
+
   play();
 }
+
 
 /* ==================== INIT ==================== */
 function init() {

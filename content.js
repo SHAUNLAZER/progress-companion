@@ -1571,11 +1571,13 @@ var CONTENT = {
     "privacy": "Private. Saved only on your device."
   },
   "guide": {
-    "avatarTitle": "Your Bodywise Guide",
+    "name": "BEE",
+    "avatarTitle": "BEE · Your Bodywise Guide",
+    "introGreeting": "Hi! My name is BEE! What's yours?",
     "routineReady": "Your routine is ready.\nI will be right beside you.",
     "tapDoubts": "Tap me anytime you have doubts.",
     "setupSpeech": {
-      "step1": "Hi there.\nWhat should I call you as we begin?",
+      "step1": "Hi! My name is BEE! What's yours?\nType your name to begin.",
       "step2": "Which area of your wellness are we caring for today?",
       "step3": "Let's look in your cabinet.\nCheck off the Bodywise formulas you own.",
       "step4": "Do you prefer dedicating time in the morning, evening, or both?"
