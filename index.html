@@ -15,32 +15,27 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&display=swap" rel="stylesheet">
   <title>Progress Companion</title>
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
-  <!-- CINEMATIC BRAND INTRO (6-7s LILAC STAGE) -->
-  <div id="intro-stage" class="intro-stage" role="dialog" aria-modal="true" aria-label="Brand introduction">
+  <!-- BRAND INTRO: B + W combine into the Bodywise figure -->
+  <div id="intro-stage" class="intro-stage playing" role="dialog" aria-modal="true" aria-label="Brand introduction">
     <button type="button" class="intro-skip-btn" id="intro-skip-btn" aria-label="Skip intro">Skip &rarr;</button>
+    <div class="intro-letters" aria-hidden="true">
+      <svg viewBox="0 0 70 100" class="intro-glyph" fill="none"><g stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+        <path id="intro-stroke-b" class="intro-draw-path" style="--dur:0.6s;--delay:0.5s" pathLength="1" d="M22 22 L14 86"/>
+        <path class="intro-draw-path" style="--dur:1.2s;--delay:1s" pathLength="1" d="M6 26 Q38 8 50 22 Q56 38 26 50 Q60 52 58 72 Q50 92 12 84"/></g></svg>
+      <svg viewBox="0 0 30 30" class="intro-plus" fill="none"><g stroke="currentColor" stroke-width="5" stroke-linecap="round">
+        <path class="intro-draw-path" style="--dur:0.35s;--delay:2.3s" pathLength="1" d="M15 5 V25"/>
+        <path class="intro-draw-path" style="--dur:0.35s;--delay:2.55s" pathLength="1" d="M5 15 H25"/></g></svg>
+      <svg viewBox="0 0 70 100" class="intro-glyph" fill="none">
+        <path id="intro-stroke-w" class="intro-draw-path" style="--dur:1.3s;--delay:2.9s" pathLength="1" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M10 14 Q6 60 18 88 Q26 60 35 36 Q44 62 52 88 Q64 60 60 14"/></svg>
+    </div>
     <div class="intro-canvas" id="intro-canvas">
-      <svg class="intro-svg" viewBox="0 0 447 447" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <!-- Step 1: Hand-drawn slanted open-topped B -->
-        <g id="intro-group-b" class="intro-glyph-group">
-          <path id="intro-stroke-b" class="intro-draw-path" d="M 180 140 C 180 180, 220 180, 240 180 C 265 180, 275 195, 275 205 C 275 215, 255 225, 215 235 C 180 245, 170 260, 165 285" />
-        </g>
-        <!-- Step 2: The + sign below it -->
-        <g id="intro-group-plus" class="intro-glyph-group">
-          <path id="intro-stroke-plus-v" class="intro-draw-path" d="M 224 235 L 224 265" />
-          <path id="intro-stroke-plus-h" class="intro-draw-path" d="M 209 250 L 239 250" />
-        </g>
-        <!-- Step 3: Rounded hand-drawn W below it -->
-        <g id="intro-group-w" class="intro-glyph-group">
-          <path id="intro-stroke-w" class="intro-draw-path" d="M 160 300 L 180 370 L 225 295 L 245 370 L 285 270" />
-        </g>
-        <!-- Step 4: Assembled Full Bodywise Figure Logo -->
-        <g id="intro-final-figure" class="intro-final-figure">
-          <path d="M 333 64 L 344 66 L 344 68 L 335 89 L 325 103 L 305 123 L 283 139 L 279 141 L 274 132 L 299 113 L 316 96 L 326 82 L 333 65 Z M 229 81 L 244 82 L 253 90 L 256 97 L 256 105 L 253 113 L 247 119 L 240 122 L 227 121 L 218 114 L 214 104 L 215 95 L 218 89 L 223 84 L 228 82 Z M 240 93 L 232 92 L 227 96 L 227 107 L 233 111 L 240 110 L 245 104 L 245 99 L 241 94 Z M 110 104 L 112 104 L 121 116 L 132 124 L 154 133 L 181 137 L 242 136 L 256 139 L 262 142 L 267 148 L 267 159 L 260 166 L 218 180 L 212 186 L 214 188 L 264 187 L 276 190 L 283 196 L 285 201 L 285 210 L 283 214 L 275 221 L 260 227 L 212 236 L 188 243 L 179 248 L 171 256 L 166 267 L 165 326 L 166 353 L 168 354 L 201 298 L 218 266 L 220 259 L 232 260 L 233 359 L 249 332 L 264 298 L 274 265 L 278 240 L 279 238 L 290 240 L 282 280 L 267 321 L 249 356 L 231 383 L 220 379 L 219 288 L 168 377 L 157 375 L 154 331 L 154 273 L 156 261 L 160 252 L 165 245 L 177 236 L 201 227 L 254 217 L 268 212 L 274 207 L 274 203 L 272 201 L 262 198 L 212 199 L 207 197 L 201 189 L 201 181 L 206 174 L 213 170 L 250 158 L 254 156 L 256 152 L 251 149 L 240 147 L 178 148 L 152 144 L 137 139 L 114 125 L 102 110 L 109 105 Z" fill="#0F2D5E" fill-rule="evenodd"/>
-        </g>
-      </svg>
+      <svg id="intro-final-figure" class="intro-final-figure" viewBox="0 0 220 280" fill="none" aria-hidden="true"><g stroke="currentColor" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+        <path class="intro-draw-path" style="--dur:1.8s;--delay:4.1s" pathLength="1" d="M10 40 Q50 72 98 56 C142 68 136 94 108 100 C152 114 150 142 104 150 C78 158 68 176 68 202 L56 266 L100 192 L118 266 L164 150"/>
+        <path class="intro-draw-path" style="--dur:0.9s;--delay:5.6s" pathLength="1" d="M210 8 Q196 46 130 68"/>
+        <circle class="intro-draw-path" style="--dur:0.6s;--delay:6.2s" pathLength="1" cx="120" cy="32" r="11" stroke-width="8"/></g></svg>
       <div id="intro-wordmark" class="intro-wordmark">Bodywise</div>
     </div>
   </div>

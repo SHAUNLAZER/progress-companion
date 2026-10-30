@@ -3881,102 +3881,48 @@ function renderAllSections() {
 function initIntroAnimation() {
   var introEl = document.getElementById('intro-stage');
   if (!introEl) return;
+  var TOTAL = 8600;
+  var timer = null;
 
-  var skipBtn = document.getElementById('intro-skip-btn');
-  var finalFigure = document.getElementById('intro-final-figure');
-  var wordmark = document.getElementById('intro-wordmark');
-  var canvas = document.getElementById('intro-canvas');
-  var animTimer1 = null;
-  var animTimer2 = null;
-  var animTimer3 = null;
-
-  function clearTimers() {
-    if (animTimer1) clearTimeout(animTimer1);
-    if (animTimer2) clearTimeout(animTimer2);
-    if (animTimer3) clearTimeout(animTimer3);
+  function dismissIntro() {
+    if (timer) clearTimeout(timer);
+    try { sessionStorage.setItem('bwc_intro_seen', 'true'); } catch (e) {}
+    introEl.classList.remove('playing');
+    introEl.classList.add('dismissed');
+    introEl.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
   }
 
-  function dismissIntro(skipAnimation) {
-    clearTimers();
-    try { sessionStorage.setItem('bwc_intro_seen', 'true'); } catch (e) {}
-    if (skipAnimation) {
-      introEl.classList.add('dismissed');
-      introEl.setAttribute('aria-hidden', 'true');
-      return;
-    }
-    if (canvas) canvas.classList.add('docking');
-    setTimeout(function () {
-      introEl.classList.add('dismissed');
-      introEl.setAttribute('aria-hidden', 'true');
-      setTimeout(function () {
-        if (canvas) canvas.classList.remove('docking');
-      }, 900);
-    }, 600);
+  function play() {
+    if (timer) clearTimeout(timer);
+    introEl.classList.remove('dismissed', 'playing');
+    void introEl.offsetWidth; // restart CSS animations
+    introEl.classList.add('playing');
+    introEl.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    timer = setTimeout(dismissIntro, TOTAL);
   }
 
   window.replayIntro = function () {
-    clearTimers();
     try { sessionStorage.removeItem('bwc_intro_seen'); } catch (e) {}
-    introEl.classList.remove('dismissed');
-    introEl.setAttribute('aria-hidden', 'false');
-    if (finalFigure) finalFigure.classList.remove('revealed');
-    if (wordmark) wordmark.classList.remove('revealed');
-    if (canvas) canvas.classList.remove('docking');
-    runSequence();
+    play();
   };
 
-  if (skipBtn) {
-    skipBtn.addEventListener('click', function () {
-      dismissIntro(true);
-    });
-  }
+  var skipBtn = document.getElementById('intro-skip-btn');
+  if (skipBtn) skipBtn.addEventListener('click', dismissIntro);
 
-  // Brand logo in header can replay intro
   var brandLogo = document.getElementById('brand-logo');
   if (brandLogo) {
     brandLogo.addEventListener('click', function (e) {
-      if (e.shiftKey) {
-        e.preventDefault();
-        window.replayIntro();
-      }
+      if (e.shiftKey) { e.preventDefault(); window.replayIntro(); }
     });
   }
 
-  // Check prefers-reduced-motion
-  if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    dismissIntro(true);
-    return;
-  }
-
-  // Check if intro has already played in this session
-  var alreadySeen = false;
-  try { alreadySeen = (sessionStorage.getItem('bwc_intro_seen') === 'true'); } catch (e) {}
-  if (alreadySeen) {
-    dismissIntro(true);
-    return;
-  }
-
-  function runSequence() {
-    // 0ms: Soft lilac backdrop visible, stroke B is drawing
-    // 1200ms: Plus draws
-    // 1600ms: W draws
-    // 3600ms: B and W glide together to center; curves unfurl, arms sweep out, head pops in -> final figure revealed!
-    animTimer1 = setTimeout(function () {
-      if (finalFigure) finalFigure.classList.add('revealed');
-    }, 3600);
-
-    // 4800ms: Finished logo holds for a beat with a gentle settle, and the "Bodywise" wordmark fades in
-    animTimer2 = setTimeout(function () {
-      if (wordmark) wordmark.classList.add('revealed');
-    }, 4800);
-
-    // 6200ms: Logo shrinks and glides into top-left of nav bar while backdrop lifts away
-    animTimer3 = setTimeout(function () {
-      dismissIntro(false);
-    }, 6200);
-  }
-
-  runSequence();
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var seen = false;
+  try { seen = sessionStorage.getItem('bwc_intro_seen') === 'true'; } catch (e) {}
+  if (reduce || seen) { dismissIntro(); return; }
+  play();
 }
 
 /* ==================== INIT ==================== */
