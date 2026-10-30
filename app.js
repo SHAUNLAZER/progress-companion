@@ -4165,7 +4165,7 @@ function renderAllSections() {
   
 }
 
-/* ==================== INTRO ANIMATION & MULTI-CONCERN BEE ONBOARDING ==================== */
+/* ==================== CINEMATIC BRAND INTRO CONTROLLER ==================== */
 function initIntroAnimation() {
   var introEl = document.getElementById('intro-stage');
   if (!introEl) return;
@@ -4177,52 +4177,41 @@ function initIntroAnimation() {
   var wordmark = document.getElementById('intro-wordmark');
   var lettersEl = document.getElementById('intro-letters');
   var canvasEl = document.getElementById('intro-canvas');
-  var beeStageEl = document.getElementById('bee-onboarding-stage');
 
-  // Multi-Concern Interview State
-  var beeState = {
-    step: 0,
-    name: '',
-    concerns: ['hair'],
-    currentConcernIdx: 0,
-    concernSubstep: 'shelf', // 'shelf' or 'timing'
-    concernsData: {
-      hair: { products: [], time: 'morning' }
-    },
-    startBucket: 'notYet'
-  };
-
-  var introTimer = null;
-  var glideTimer = null;
+  var GLIDE_TIME = 7800; // Trigger glide right after figure settles and wordmark appears
+  var timer = null;
   var landTimer = null;
+  var isGliding = false;
 
   function clearTimers() {
-    if (introTimer) clearTimeout(introTimer);
-    if (glideTimer) clearTimeout(glideTimer);
+    if (timer) clearTimeout(timer);
     if (landTimer) clearTimeout(landTimer);
   }
 
   function dismissIntro() {
     clearTimers();
     try { sessionStorage.setItem('bwc_intro_seen', 'true'); } catch (e) {}
+    if (headerIcon) {
+      headerIcon.style.opacity = '1';
+    }
     introEl.classList.remove('playing', 'fading');
     introEl.classList.add('dismissed');
     introEl.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
   }
 
-  function startGlide(onDone) {
-    if (!introEl || introEl.classList.contains('dismissed')) {
-      if (typeof onDone === 'function') onDone();
-      return;
-    }
+  function startGlide() {
+    if (isGliding || !introEl || introEl.classList.contains('dismissed')) return;
+    isGliding = true;
+    clearTimers();
 
     var targetEl = headerIcon || (brandLogo ? brandLogo.querySelector('.guide-avatar-badge') : null) || brandLogo;
+
     if (targetEl && figure) {
       var targetRect = targetEl.getBoundingClientRect();
       var figRect = figure.getBoundingClientRect();
 
-      if (figRect.width > 0 && figRect.height > 0 && targetRect.width > 0) {
+      if (figRect.width > 0 && targetRect.width > 0) {
         var figCenterX = figRect.left + figRect.width / 2;
         var figCenterY = figRect.top + figRect.height / 2;
         var targetCenterX = targetRect.left + targetRect.width / 2;
@@ -4244,467 +4233,83 @@ function initIntroAnimation() {
           wordmark.style.transition = 'opacity 0.5s ease';
           wordmark.style.opacity = '0';
         }
-        if (beeStageEl) {
-          beeStageEl.style.transition = 'opacity 0.5s ease';
-          beeStageEl.style.opacity = '0';
-        }
         introEl.style.transition = 'opacity 0.9s cubic-bezier(0.4, 0, 0.2, 1)';
         introEl.style.opacity = '0';
+      } else {
+        introEl.classList.add('fading');
+        introEl.style.transition = 'opacity 0.6s ease';
+        introEl.style.opacity = '0';
       }
+    } else {
+      introEl.classList.add('fading');
+      introEl.style.transition = 'opacity 0.6s ease';
+      introEl.style.opacity = '0';
     }
 
     landTimer = setTimeout(function () {
-      if (targetEl) targetEl.style.opacity = '1';
       dismissIntro();
-      if (typeof onDone === 'function') onDone();
     }, 950);
   }
 
-  function renderBeeOnboarding() {
-    if (!beeStageEl) return;
-    if (lettersEl) lettersEl.style.display = 'none';
-    if (wordmark) wordmark.style.display = 'none';
-    if (canvasEl) {
-      canvasEl.style.transition = 'transform 0.5s ease';
-      canvasEl.style.transform = 'scale(0.65) translateY(-30px)';
-    }
-
-    beeStageEl.style.display = 'flex';
-    beeStageEl.style.opacity = '1';
-
-    var step = beeState.step;
-    var stepHtml = '';
-
-    if (step === 0) {
-      // Step 0: Name Greeting
-      stepHtml = '<div class="bee-character-card">' +
-        '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
-        '<div class="bee-speech-bubble">' +
-          '<h3 class="bee-greeting-title">Hi! My name is BEE! What\'s yours?</h3>' +
-          '<p class="bee-greeting-sub">I will walk you through your wellness routine step by step.</p>' +
-        '</div>' +
-        '<div class="bee-input-group">' +
-          '<input type="text" class="bee-input-name" id="bee-name-input" placeholder="Type your first name..." value="' + escHTML(beeState.name) + '" maxlength="30" autofocus />' +
-          '<button type="button" class="btn btn-primary" id="bee-name-submit">Continue &rarr;</button>' +
-        '</div>' +
-      '</div>';
-    } else if (step === 1) {
-      // Step 1: Multi-Select Wellness Focus Areas
-      stepHtml = '<div class="bee-character-card">' +
-        '<div class="bee-steps-indicator">' +
-          '<span class="bee-step-dot active"></span>' +
-          '<span class="bee-step-dot"></span>' +
-          '<span class="bee-step-dot"></span>' +
-          '<span class="bee-step-dot"></span>' +
-        '</div>' +
-        '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
-        '<div class="bee-speech-bubble">' +
-          '<h3 class="bee-greeting-title">Nice to meet you, ' + escHTML(beeState.name) + '!</h3>' +
-          '<p class="bee-greeting-sub">Select every wellness area you want to care for right now.</p>' +
-        '</div>' +
-        '<div class="bee-options-grid">' +
-          CONTENT.quiz.concerns.map(function (c) {
-            var isSel = (beeState.concerns.indexOf(c.value) >= 0);
-            return '<button type="button" class="bee-choice-btn' + (isSel ? ' selected' : '') + '" data-concern="' + c.value + '">' +
-              '<span class="bee-choice-title">' + escHTML(c.label) + '</span>' +
-              '<span class="bee-choice-desc">Personalized biological timeline</span>' +
-              (isSel ? '<span class="bee-check-badge">&#10003;</span>' : '') +
-            '</button>';
-          }).join('') +
-        '</div>' +
-        '<div style="display:flex;justify-content:space-between;width:100%;margin-top:10px;">' +
-          '<button type="button" class="btn btn-secondary btn-sm" id="bee-prev">Back</button>' +
-          '<button type="button" class="btn btn-primary btn-sm" id="bee-next-focus">Next: Focus Details &rarr;</button>' +
-        '</div>' +
-      '</div>';
-    } else if (step === 2) {
-      // Step 2: Sequential In-Depth Loops for Each Selected Concern
-      var currentConcernKey = beeState.concerns[beeState.currentConcernIdx] || 'hair';
-      var concernLabel = (Utils.getConcernConfig(currentConcernKey) && Utils.getConcernConfig(currentConcernKey).label) || currentConcernKey;
-      var totalConcerns = beeState.concerns.length;
-      var curData = beeState.concernsData[currentConcernKey] || { products: [], time: 'morning' };
-
-      if (beeState.concernSubstep === 'shelf') {
-        var catalog = CONTENT.catalog[currentConcernKey] || [];
-        stepHtml = '<div class="bee-character-card">' +
-          '<div class="bee-steps-indicator">' +
-            '<span class="bee-step-dot"></span>' +
-            '<span class="bee-step-dot active"></span>' +
-            '<span class="bee-step-dot"></span>' +
-            '<span class="bee-step-dot"></span>' +
-          '</div>' +
-          '<div style="font-size:0.78rem;font-weight:700;color:#0B5E9E;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">' +
-            'Focus ' + (beeState.currentConcernIdx + 1) + ' of ' + totalConcerns + ' &middot; ' + escHTML(concernLabel) +
-          '</div>' +
-          '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
-          '<div class="bee-speech-bubble">' +
-            '<h3 class="bee-greeting-title">Do you have ' + escHTML(concernLabel) + ' formulas at home?</h3>' +
-            '<p class="bee-greeting-sub">Select every product you currently have with you.</p>' +
-          '</div>' +
-          '<div style="display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;max-height:190px;overflow-y:auto;padding:2px;">' +
-            catalog.map(function (p) {
-              var isChk = (curData.products.indexOf(p.id) >= 0);
-              return '<div class="shelf-product-item' + (isChk ? ' selected focus-ring-active' : '') + '" data-prod-id="' + p.id + '" style="cursor:pointer;padding:10px 14px;background:#F8FAFC;border:1.5px solid ' + (isChk ? '#0B5E9E' : '#E2E8F0') + ';border-radius:12px;display:flex;align-items:center;gap:10px;">' +
-                '<div class="shelf-checkbox" style="width:20px;height:20px;border-radius:6px;border:1.5px solid ' + (isChk ? '#0B5E9E' : '#CBD5E1') + ';background:' + (isChk ? '#0B5E9E' : '#FFFFFF') + ';display:flex;align-items:center;justify-content:center;color:#FFFFFF;">' + (isChk ? ICONS.check : '') + '</div>' +
-                '<span style="font-size:0.9rem;font-weight:600;color:#0F2D5E;">' + escHTML(p.name) + '</span>' +
-              '</div>';
-            }).join('') +
-          '</div>' +
-          '<div style="display:flex;justify-content:space-between;width:100%;margin-top:10px;">' +
-            '<button type="button" class="btn btn-secondary btn-sm" id="bee-prev">Back</button>' +
-            '<button type="button" class="btn btn-primary btn-sm" id="bee-next-shelf">Next: Routine Time &rarr;</button>' +
-          '</div>' +
-        '</div>';
-      } else {
-        // Timing substep for this concern
-        stepHtml = '<div class="bee-character-card">' +
-          '<div class="bee-steps-indicator">' +
-            '<span class="bee-step-dot"></span>' +
-            '<span class="bee-step-dot active"></span>' +
-            '<span class="bee-step-dot"></span>' +
-            '<span class="bee-step-dot"></span>' +
-          '</div>' +
-          '<div style="font-size:0.78rem;font-weight:700;color:#0B5E9E;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">' +
-            'Focus ' + (beeState.currentConcernIdx + 1) + ' of ' + totalConcerns + ' &middot; ' + escHTML(concernLabel) +
-          '</div>' +
-          '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
-          '<div class="bee-speech-bubble">' +
-            '<h3 class="bee-greeting-title">When will you apply ' + escHTML(concernLabel) + ' care?</h3>' +
-            '<p class="bee-greeting-sub">Choose when you can consistently fit this ritual into your day.</p>' +
-          '</div>' +
-          '<div style="width:100%;text-align:left;">' +
-            '<div class="chip-group mb-16" style="display:flex;gap:8px;justify-content:center;">' +
-              '<button type="button" class="chip' + (curData.time === 'morning' ? ' selected focus-ring-active' : '') + '" data-time="morning">Morning only</button>' +
-              '<button type="button" class="chip' + (curData.time === 'night' ? ' selected focus-ring-active' : '') + '" data-time="night">Night only</button>' +
-              '<button type="button" class="chip' + (curData.time === 'both' ? ' selected focus-ring-active' : '') + '" data-time="both">Both AM & PM</button>' +
-            '</div>' +
-          '</div>' +
-          '<div style="display:flex;justify-content:space-between;width:100%;margin-top:10px;">' +
-            '<button type="button" class="btn btn-secondary btn-sm" id="bee-prev">Back</button>' +
-            '<button type="button" class="btn btn-primary btn-sm" id="bee-next-time">' +
-              (beeState.currentConcernIdx < totalConcerns - 1 ? 'Next Concern &rarr;' : 'Next: Start Timeline &rarr;') +
-            '</button>' +
-          '</div>' +
-        '</div>';
-      }
-    } else if (step === 3) {
-      // Step 3: Start Date Bucket
-      stepHtml = '<div class="bee-character-card">' +
-        '<div class="bee-steps-indicator">' +
-          '<span class="bee-step-dot"></span>' +
-          '<span class="bee-step-dot"></span>' +
-          '<span class="bee-step-dot active"></span>' +
-          '<span class="bee-step-dot"></span>' +
-        '</div>' +
-        '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
-        '<div class="bee-speech-bubble">' +
-          '<h3 class="bee-greeting-title">When did you start your routines, ' + escHTML(beeState.name) + '?</h3>' +
-          '<p class="bee-greeting-sub">This anchors your biological timeline and weekly expectations.</p>' +
-        '</div>' +
-        '<div class="bee-options-grid">' +
-          '<button type="button" class="bee-choice-btn' + (beeState.startBucket === 'notYet' ? ' selected' : '') + '" data-bucket="notYet">' +
-            '<span class="bee-choice-title">Starting today</span>' +
-            '<span class="bee-choice-desc">Day 1 foundation</span>' +
-          '</button>' +
-          '<button type="button" class="bee-choice-btn' + (beeState.startBucket === 'under1m' ? ' selected' : '') + '" data-bucket="under1m">' +
-            '<span class="bee-choice-title">Past 2 weeks</span>' +
-            '<span class="bee-choice-desc">Adjusting to routine</span>' +
-          '</button>' +
-          '<button type="button" class="bee-choice-btn' + (beeState.startBucket === '1to3m' ? ' selected' : '') + '" data-bucket="1to3m">' +
-            '<span class="bee-choice-title">1 to 2 months ago</span>' +
-            '<span class="bee-choice-desc">Early biological signs</span>' +
-          '</button>' +
-        '</div>' +
-        '<div style="display:flex;justify-content:space-between;width:100%;margin-top:10px;">' +
-          '<button type="button" class="btn btn-secondary btn-sm" id="bee-prev">Back</button>' +
-          '<button type="button" class="btn btn-primary btn-sm" id="bee-next-bucket">Review My Companion &rarr;</button>' +
-        '</div>' +
-      '</div>';
-    } else if (step === 4) {
-      // Step 4: Celebration & Enter Companion
-      var primaryConcern = beeState.concerns[0] || 'hair';
-      var concernNames = beeState.concerns.map(function (c) {
-        return (Utils.getConcernConfig(c) && Utils.getConcernConfig(c).label) || c;
-      }).join(', ');
-
-      stepHtml = '<div class="bee-character-card">' +
-        '<div class="bee-steps-indicator">' +
-          '<span class="bee-step-dot"></span>' +
-          '<span class="bee-step-dot"></span>' +
-          '<span class="bee-step-dot"></span>' +
-          '<span class="bee-step-dot active"></span>' +
-        '</div>' +
-        '<div class="bee-avatar-hero" style="animation:none;transform:scale(1.05);">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
-        '<div class="bee-speech-bubble">' +
-          '<h3 class="bee-greeting-title">Your Progress Companion is ready, ' + escHTML(beeState.name) + '!</h3>' +
-          '<p class="bee-greeting-sub">Tracking ' + escHTML(concernNames) + ' with biological forecasts.</p>' +
-        '</div>' +
-        '<div style="background:#F0F7FD;border:1.5px solid #BFDBFE;border-radius:14px;padding:12px 18px;width:100%;text-align:left;box-sizing:border-box;">' +
-          '<div style="font-size:0.85rem;font-weight:700;color:#0B5E9E;margin-bottom:4px;">Ready for your journey</div>' +
-          '<div style="font-size:0.8rem;color:#475569;">Daily ritual checklist and weekly biological milestones are unlocked.</div>' +
-        '</div>' +
-        '<button type="button" class="btn btn-primary" id="bee-enter-app" style="width:100%;padding:14px 20px;font-size:1rem;margin-top:6px;">' +
-          'Enter My Companion &rarr;' +
-        '</button>' +
-      '</div>';
-    }
-
-    beeStageEl.innerHTML = stepHtml;
-
-    // Bindings
-    if (step === 0) {
-      var nameInput = document.getElementById('bee-name-input');
-      var nameSubmit = document.getElementById('bee-name-submit');
-      function handleName() {
-        var raw = nameInput ? nameInput.value.trim() : '';
-        beeState.name = raw ? Utils.toTitleCase(raw) : 'Friend';
-        beeState.step = 1;
-        renderBeeOnboarding();
-      }
-      if (nameSubmit) nameSubmit.addEventListener('click', handleName);
-      if (nameInput) {
-        nameInput.addEventListener('keydown', function (e) {
-          if (e.key === 'Enter') handleName();
-        });
-      }
-    } else if (step === 1) {
-      beeStageEl.querySelectorAll('[data-concern]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          var val = this.getAttribute('data-concern');
-          var idx = beeState.concerns.indexOf(val);
-          if (idx >= 0) {
-            if (beeState.concerns.length > 1) {
-              beeState.concerns.splice(idx, 1);
-              delete beeState.concernsData[val];
-            } else {
-              UI.toast('Please keep at least one wellness area selected.');
-            }
-          } else {
-            beeState.concerns.push(val);
-            if (!beeState.concernsData[val]) {
-              beeState.concernsData[val] = { products: [], time: 'morning' };
-            }
-          }
-          renderBeeOnboarding();
-        });
-      });
-
-      var prevBtn1 = document.getElementById('bee-prev');
-      if (prevBtn1) {
-        prevBtn1.addEventListener('click', function () {
-          beeState.step = 0;
-          renderBeeOnboarding();
-        });
-      }
-
-      var nextFocusBtn = document.getElementById('bee-next-focus');
-      if (nextFocusBtn) {
-        nextFocusBtn.addEventListener('click', function () {
-          if (!beeState.concerns || !beeState.concerns.length) {
-            UI.toast('Please select at least one wellness area.');
-            return;
-          }
-          beeState.currentConcernIdx = 0;
-          beeState.concernSubstep = 'shelf';
-          beeState.step = 2;
-          renderBeeOnboarding();
-        });
-      }
-    } else if (step === 2) {
-      var curKey = beeState.concerns[beeState.currentConcernIdx] || 'hair';
-      if (!beeState.concernsData[curKey]) {
-        beeState.concernsData[curKey] = { products: [], time: 'morning' };
-      }
-
-      if (beeState.concernSubstep === 'shelf') {
-        beeStageEl.querySelectorAll('.shelf-product-item').forEach(function (item) {
-          item.addEventListener('click', function () {
-            var prodId = this.getAttribute('data-prod-id');
-            var pList = beeState.concernsData[curKey].products;
-            var pIdx = pList.indexOf(prodId);
-            if (pIdx >= 0) pList.splice(pIdx, 1);
-            else pList.push(prodId);
-            renderBeeOnboarding();
-          });
-        });
-
-        var prevBtn2 = document.getElementById('bee-prev');
-        if (prevBtn2) {
-          prevBtn2.addEventListener('click', function () {
-            if (beeState.currentConcernIdx > 0) {
-              beeState.currentConcernIdx--;
-              beeState.concernSubstep = 'timing';
-            } else {
-              beeState.step = 1;
-            }
-            renderBeeOnboarding();
-          });
-        }
-
-        var nextShelfBtn = document.getElementById('bee-next-shelf');
-        if (nextShelfBtn) {
-          nextShelfBtn.addEventListener('click', function () {
-            beeState.concernSubstep = 'timing';
-            renderBeeOnboarding();
-          });
-        }
-      } else {
-        beeStageEl.querySelectorAll('[data-time]').forEach(function (btn) {
-          btn.addEventListener('click', function () {
-            beeState.concernsData[curKey].time = this.getAttribute('data-time');
-            renderBeeOnboarding();
-          });
-        });
-
-        var prevBtnTiming = document.getElementById('bee-prev');
-        if (prevBtnTiming) {
-          prevBtnTiming.addEventListener('click', function () {
-            beeState.concernSubstep = 'shelf';
-            renderBeeOnboarding();
-          });
-        }
-
-        var nextTimeBtn = document.getElementById('bee-next-time');
-        if (nextTimeBtn) {
-          nextTimeBtn.addEventListener('click', function () {
-            if (beeState.currentConcernIdx < beeState.concerns.length - 1) {
-              beeState.currentConcernIdx++;
-              beeState.concernSubstep = 'shelf';
-              renderBeeOnboarding();
-            } else {
-              beeState.step = 3;
-              renderBeeOnboarding();
-            }
-          });
-        }
-      }
-    } else if (step === 3) {
-      beeStageEl.querySelectorAll('[data-bucket]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          beeState.startBucket = this.getAttribute('data-bucket');
-          renderBeeOnboarding();
-        });
-      });
-
-      var prevBtn3 = document.getElementById('bee-prev');
-      if (prevBtn3) {
-        prevBtn3.addEventListener('click', function () {
-          beeState.step = 2;
-          beeState.currentConcernIdx = beeState.concerns.length - 1;
-          beeState.concernSubstep = 'timing';
-          renderBeeOnboarding();
-        });
-      }
-
-      var nextBucketBtn = document.getElementById('bee-next-bucket');
-      if (nextBucketBtn) {
-        nextBucketBtn.addEventListener('click', function () {
-          beeState.step = 4;
-          renderBeeOnboarding();
-        });
-      }
-    } else if (step === 4) {
-      var enterBtn = document.getElementById('bee-enter-app');
-      if (enterBtn) {
-        enterBtn.addEventListener('click', function () {
-          var primaryConcern = beeState.concerns[0] || 'hair';
-          var allProds = [];
-          beeState.concerns.forEach(function (ck) {
-            var cObj = beeState.concernsData[ck];
-            if (cObj && cObj.products) {
-              allProds = allProds.concat(cObj.products);
-            }
-          });
-
-          var prof = {
-            name: beeState.name,
-            concern: primaryConcern,
-            concerns: beeState.concerns,
-            products: allProds,
-            concernsData: beeState.concernsData,
-            timing: (beeState.concernsData[primaryConcern] && beeState.concernsData[primaryConcern].time) || 'both',
-            startBucket: beeState.startBucket,
-            startDate: Utils.getStartDateFromBucket(beeState.startBucket),
-            checkins: {},
-            markerRatings: [],
-            version: 3
-          };
-          Storage.save(prof);
-
-          startGlide(function () {
-            renderAllSections();
-            scrollToSection('today');
-          });
-        });
-      }
-    }
-  }
-
-  function play(forceBee) {
+  function play() {
     clearTimers();
+    isGliding = false;
     introEl.classList.remove('dismissed', 'playing', 'fading');
     introEl.style.opacity = '1';
-    if (wordmark) wordmark.style.opacity = '';
+    introEl.style.transition = '';
+    if (wordmark) {
+      wordmark.style.opacity = '';
+      wordmark.style.transition = '';
+    }
     if (lettersEl) lettersEl.style.display = '';
     if (canvasEl) {
       canvasEl.style.display = '';
       canvasEl.style.transform = '';
       canvasEl.style.opacity = '';
     }
-    if (beeStageEl) {
-      beeStageEl.style.display = 'none';
-      beeStageEl.style.opacity = '0';
-    }
     if (figure) {
       figure.style.transform = '';
       figure.style.transition = '';
     }
 
-    void introEl.offsetWidth; // force reflow
+    void introEl.offsetWidth; // restart CSS animations
     introEl.classList.add('playing');
     introEl.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
 
-    var existingProfile = Storage.load();
+    // Trigger smooth glide into header logo at 7.8s
+    timer = setTimeout(startGlide, GLIDE_TIME);
 
-    if (!existingProfile || forceBee) {
-      // Requirement 1: Hold completed logo until 9.2s, then trigger BEE
-      introTimer = setTimeout(function () {
-        renderBeeOnboarding();
-      }, 8800);
-    } else {
-      // Returning user with active profile: glide smoothly into header logo at 9.2s
-      introTimer = setTimeout(function () {
-        startGlide();
-      }, 8800);
-    }
+    // Hard safety timeout: dismiss intro after 9.0s guaranteed
+    setTimeout(function () {
+      if (!introEl.classList.contains('dismissed')) {
+        dismissIntro();
+      }
+    }, 9000);
   }
 
   window.replayIntro = function () {
     try { sessionStorage.removeItem('bwc_intro_seen'); } catch (e) {}
-    play(false);
-  };
-
-  window.replayIntroWithBee = function () {
-    try { sessionStorage.removeItem('bwc_intro_seen'); } catch (e) {}
-    play(true);
+    play();
   };
 
   if (skipBtn) {
-    skipBtn.addEventListener('click', function () {
+    skipBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
       dismissIntro();
     });
   }
 
-  // Tapping anywhere on the intro stage after settlement immediately unlocks the website or launches BEE
-  if (introEl) {
-    introEl.addEventListener('click', function (e) {
-      if (e.target.closest('#bee-onboarding-stage')) return;
-      var existingProf = Storage.load();
-      if (existingProf) {
-        startGlide();
-      } else {
-        renderBeeOnboarding();
+  // Tapping anywhere on the intro stage immediately glides and reveals the website
+  introEl.addEventListener('click', function () {
+    startGlide();
+  });
+
+  if (brandLogo) {
+    brandLogo.addEventListener('click', function (e) {
+      if (e.shiftKey) {
+        e.preventDefault();
+        window.replayIntro();
       }
     });
   }
@@ -4712,14 +4317,13 @@ function initIntroAnimation() {
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var seen = false;
   try { seen = sessionStorage.getItem('bwc_intro_seen') === 'true'; } catch (e) {}
-  var prof = Storage.load();
 
-  if (reduce || (seen && prof)) {
+  if (reduce || seen) {
     dismissIntro();
     return;
   }
 
-  play(false);
+  play();
 }
 
 /* ==================== INIT ==================== */
