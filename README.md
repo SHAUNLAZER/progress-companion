@@ -56,7 +56,7 @@ Run unit tests locally using Node.js:
 node test.js
 ```
 
-All 77+ logic tests run across 11 test suites covering consistency math, streak tracking, rest days, verdict engine, priority cards, focus resolution, casing, and critique rules.
+All 250+ checks run across 30 test suites covering consistency math, streak tracking, rest days, verdict engine, priority cards, focus resolution, casing, and critique rules.
 
 ---
 

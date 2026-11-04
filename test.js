@@ -772,7 +772,7 @@
   console.log('Test Summary: ' + passedTests + ' / ' + totalTests + ' passed (' + failedTests + ' failed)');
   console.log('----------------------------------------------------');
 
-  if (isNode && failedTests > 0) {
-    process.exit(1);
+  if (isNode) {
+    process.exit(failedTests > 0 ? 1 : 0);
   }
 })();

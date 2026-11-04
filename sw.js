@@ -3,7 +3,7 @@
    Caches static assets for reliable offline daily tracking.
    ============================================================ */
 
-const CACHE_NAME = 'progress-companion-v13';
+const CACHE_NAME = 'progress-companion-v14';
 const ASSETS = [
   './',
   './index.html',
@@ -54,15 +54,16 @@ self.addEventListener('fetch', function (event) {
         var copy = response.clone();
         caches.open(CACHE_NAME).then(function (cache) {
           cache.put(event.request, copy);
-        });
+        }).catch(function () {});
       }
       return response;
     }).catch(function () {
-      return caches.match(event.request).then(function (cached) {
+      return caches.match(event.request, { ignoreSearch: true }).then(function (cached) {
         if (cached) return cached;
         if (event.request.mode === 'navigate') {
           return caches.match('./index.html');
         }
+        return new Response('', { status: 504, statusText: 'Offline' });
       });
     })
   );

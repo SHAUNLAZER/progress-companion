@@ -1,6 +1,6 @@
 {
   "name": "bodywise-progress-companion",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Mobile-first progress companion for Be Bodywise wellness routines.",
   "main": "app.js",
   "scripts": {

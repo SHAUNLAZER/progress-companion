@@ -76,29 +76,6 @@ const Storage = {
 
 /* ==================== UTILS ==================== */
 var Utils = {
-  getDefaultProfile: function () {
-    var today = Utils.getToday();
-    var concern = 'hair';
-    var catalog = (typeof CONTENT !== 'undefined' && CONTENT.catalog && CONTENT.catalog[concern]) || [];
-    var products = catalog.slice(0, 2);
-    if (!products.length) {
-      products = [{ id: 'hair-oil', name: 'Rosemary Hair Growth Oil', sizeDays: 30 }];
-    }
-    return {
-      version: 3,
-      name: 'Friend',
-      concern: concern,
-      startDate: today,
-      startBucket: 'notYet',
-      routineTime: 'morning',
-      products: products,
-      marker: 'Observed change',
-      checkins: [],
-      flags: { seenExpect: true },
-      baseline: { primary: 3, secondary: 3, date: today }
-    };
-  },
-
   getToday: function () {
     var d = new Date();
     return d.getFullYear() + '-' +
@@ -148,47 +125,74 @@ var Utils = {
   toTitleCase: function (s) {
     if (!s) return '';
     return s.trim().split(/\s+/).map(function (w) {
-      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+      return w.toLowerCase().replace(/(^|[-'\u2019])([a-z\u00e0-\u024f])/g, function (m, sep, ch) {
+        return sep + ch.toUpperCase();
+      });
     }).join(' ');
   },
 
-  getConsistency: function (checkins, startDate) {
-    var today = this.getToday();
-    var totalDays = Math.min(28, Math.max(1, this.daysBetween(startDate, today) + 1));
-    var windowStart = this.addDays(today, -(totalDays - 1));
-    var done = 0;
-    var rest = 0;
-    if (checkins) {
-      checkins.forEach(function (c) {
-        if (c.date >= windowStart && c.date <= today) {
-          if (c.done) done++;
-          else if (c.rest) rest++;
-        }
-      });
-    }
-    var denom = Math.max(1, totalDays - rest);
-    return { done: done, total: denom, rest: rest, pct: done / denom };
+  // Is `dateStr` inside a pause window ({ from, until })?
+  isDateInPause: function (paused, dateStr) {
+    return !!(paused && paused.from && paused.until && dateStr >= paused.from && dateStr <= paused.until);
   },
 
-  getStreak: function (checkins) {
+  isPaused: function (profile) {
+    return !!(profile && this.isDateInPause(profile.paused, this.getToday()));
+  },
+
+  getConsistency: function (checkins, startDate, paused) {
+    var today = this.getToday();
+    var totalDays = Math.min(28, Math.max(1, this.daysBetween(startDate, today) + 1));
+    var byDate = {};
+    (checkins || []).forEach(function (c) {
+      if (!byDate[c.date] || c.done) byDate[c.date] = c;
+    });
+    var done = 0;
+    var rest = 0;
+    for (var i = 0; i < totalDays; i++) {
+      var d = this.addDays(today, -i);
+      var c = byDate[d];
+      if (c && c.done) done++;
+      else if ((c && c.rest) || this.isDateInPause(paused, d)) rest++;
+    }
+    var denom = Math.max(1, totalDays - rest);
+    return { done: done, total: denom, rest: rest, pct: Math.min(1, done / denom) };
+  },
+
+  getStreak: function (checkins, paused) {
     if (!checkins || !checkins.length) return 0;
+    var self = this;
     var today = this.getToday();
     var activeSet = {};
     checkins.forEach(function (c) {
       if (c.done || c.rest) activeSet[c.date] = true;
     });
+    function ok(d) { return activeSet[d] || self.isDateInPause(paused, d); }
     var checkDate = today;
-    if (!activeSet[checkDate]) {
-      var yesterday = this.addDays(today, -1);
-      if (!activeSet[yesterday]) return 0;
-      checkDate = yesterday;
+    if (!ok(checkDate)) {
+      checkDate = this.addDays(today, -1);
+      if (!ok(checkDate)) return 0;
     }
     var streak = 0;
-    while (activeSet[checkDate]) {
-      streak++;
+    var guard = 0;
+    while (ok(checkDate) && guard++ < 3660) {
+      if (activeSet[checkDate]) streak++;
       checkDate = this.addDays(checkDate, -1);
     }
     return streak;
+  },
+
+  getBestStreak: function (checkins) {
+    var dates = {};
+    (checkins || []).forEach(function (c) { if (c.done || c.rest) dates[c.date] = true; });
+    var keys = Object.keys(dates).sort();
+    var best = 0, run = 0, prev = null;
+    for (var i = 0; i < keys.length; i++) {
+      run = (prev && this.addDays(prev, 1) === keys[i]) ? run + 1 : 1;
+      if (run > best) best = run;
+      prev = keys[i];
+    }
+    return best;
   },
 
   canTakeRestDay: function (checkins, dateStr) {
@@ -211,11 +215,11 @@ var Utils = {
 
   getMomentumScore: function (profile) {
     if (!profile) return 0;
-    var con = this.getConsistency(profile.checkins, profile.startDate);
-    var streak = this.getStreak(profile.checkins);
+    var con = this.getConsistency(profile.checkins, profile.startDate, profile.paused);
+    var streak = this.getStreak(profile.checkins, profile.paused);
     var consistencyScore = Math.min(50, Math.round(con.pct * 50));
     var streakScore = Math.min(25, streak * 5);
-    var reviewDone = profile.ratings && profile.ratings.length > 0;
+    var reviewDone = profile.weeklyRatings && profile.weeklyRatings.length > 0;
     var reviewScore = reviewDone ? 25 : 10;
     return Math.min(100, consistencyScore + streakScore + reviewScore);
   },
@@ -280,7 +284,7 @@ var Utils = {
     (checkins || []).forEach(function (c) {
       if (c.done && c.date >= openedOn) usedCount++;
     });
-    var usedDoses = Math.min(sizeDays, Math.max(1, usedCount));
+    var usedDoses = Math.min(sizeDays, usedCount);
     var remainingDoses = Math.max(0, sizeDays - usedDoses);
     var estimatedFinish = this.addDays(this.getToday(), remainingDoses);
     var reorderDate = this.addDays(estimatedFinish, -5);
@@ -323,13 +327,13 @@ var Utils = {
         label: CONTENT.verdictNames.checkIn,
         message: CONTENT.stageMessages.checkInAgain,
         cssClass: 'verdict-early',
-        reasons: ['First rating recorded', 'Need second week to compare']
+        reasons: [ratings.length ? 'First weekly review saved' : 'No weekly review yet', 'Two reviews give a first comparison']
       };
     }
 
     var latest = ratings[ratings.length - 1];
     var weeks = this.getWeekNumber(profile.startDate);
-    var con = this.getConsistency(profile.checkins, profile.startDate);
+    var con = this.getConsistency(profile.checkins, profile.startDate, profile.paused);
 
     // Rule 2: too early
     if (weeks < cfg.earlyWindowWeeks) {
@@ -362,7 +366,7 @@ var Utils = {
       return {
         type: 'closer',
         label: CONTENT.verdictNames.closer,
-        message: isWorse ? CONTENT.stageMessages.closerNoProgress : (weeks >= cfg.fullWindowWeeks ? CONTENT.stageMessages.pastWindow : CONTENT.stageMessages.closerNoProgress),
+        message: isWorse ? CONTENT.stageMessages.closerWorse : (weeks >= cfg.fullWindowWeeks ? CONTENT.stageMessages.pastWindow : CONTENT.stageMessages.closerNoProgress),
         cssClass: 'verdict-closer',
         reasons: [isWorse ? 'Rating lower than baseline' : 'No change after ' + cfg.fullWindowWeeks + ' weeks', 'Time to try a different approach']
       };
@@ -418,6 +422,7 @@ var Utils = {
 
   isWeeklyRatingDue: function (profile) {
     if (!profile || !profile.baseline) return false;
+    if (this.isPaused(profile)) return false;
     var daysSinceStart = this.daysBetween(profile.startDate, this.getToday());
     if (daysSinceStart < 7) return false;
     var ratings = profile.weeklyRatings || [];
@@ -447,14 +452,20 @@ var Utils = {
   },
 
   downloadICS: function (title, description, recurrence) {
+    function esc(v) {
+      return String(v || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+    }
+    var now = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
     var ics = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
       'PRODID:-//Bodywise Progress Companion//EN',
       'CALSCALE:GREGORIAN',
       'BEGIN:VEVENT',
-      'SUMMARY:' + title,
-      'DESCRIPTION:' + description,
+      'UID:checkin-' + Date.now() + '@progress-companion',
+      'DTSTAMP:' + now,
+      'SUMMARY:' + esc(title),
+      'DESCRIPTION:' + esc(description),
       'STATUS:CONFIRMED',
       'RRULE:FREQ=' + (recurrence || 'DAILY'),
       'DTSTART:' + Utils.getToday().replace(/-/g, '') + 'T090000',
@@ -471,83 +482,66 @@ var Utils = {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      prompt('Copy reminder details:', title + ' - ' + description);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    } catch (err) {
+      UI.toast('Could not create the reminder file.');
     }
   }
 };
 
 
 
-/* ==================== NAVIGATION & SCROLLSPY ==================== */
-function scrollToSection(id) {
-  var el = document.getElementById(id);
-  if (el) {
-    var headerOffset = 64;
-    var elementPosition = el.getBoundingClientRect().top;
-    var offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-    window.scrollTo({
-      top: offsetPosition,
-      behavior: 'smooth'
-    });
-    try {
-      history.replaceState(null, '', '#' + id);
-    } catch (e) {}
-  }
+/* ==================== NAVIGATION ==================== */
+// Short route names used by links and content map onto section ids.
+var ROUTE_ALIASES = {
+  '': 'companion', home: 'companion', welcome: 'companion',
+  start: 'setup', expect: 'timeline', progress: 'results', decide: 'nextstep'
+};
+
+function normalizeRoute(hash) {
+  return String(hash || '').replace(/^#\/*/, '');
 }
 
 var Router = {
-  routes: {},
-  register: function (hash, fn) { this.routes[hash] = fn; },
   navigate: function (hash) {
-    var id = (hash || '').replace(/^#[/]*/, '');
-    if (id === 'stuck') {
-      openSupportDrawer();
-    } else if (id === 'recap') {
-      openRecapDrawer();
-    } else if (id === 'settings') {
-      openSettingsDrawer();
-    } else if (id === 'about') {
-      openAboutDrawer();
-    } else if (id === 'start') {
-      scrollToSection('setup');
-    } else if (id === 'expect') {
-      scrollToSection('timeline');
-    } else if (id === 'home' || id === '') {
-      scrollToSection('companion');
-    } else {
-      scrollToSection(id);
-    }
+    var id = normalizeRoute(hash);
+    if (id === 'stuck') return openSupportDrawer();
+    if (id === 'recap') return openRecapDrawer();
+    if (id === 'settings' || id === 'about') return openSettingsDrawer();
+    scrollToSection(id);
   },
   resolve: function () {
-    var hash = window.location.hash || '';
-    var id = hash.replace(/^#[/]*/, '');
-    if (id && document.getElementById(id)) {
-      scrollToSection(id);
-    }
+    var id = normalizeRoute(window.location.hash);
+    if (id) this.navigate(id);
   },
   start: function () {
     var self = this;
     window.addEventListener('hashchange', function () { self.resolve(); });
+    self.resolve();
   }
 };
 
-/* ==================== DRAWER OVERLAY ==================== */
 var Drawer = {
   _prevFocus: null,
 
+  isOpen: function () {
+    var overlay = document.getElementById('app-drawer');
+    return !!(overlay && overlay.classList.contains('active'));
+  },
+
   open: function (title, contentHTML, onMount) {
-    this._prevFocus = document.activeElement;
     var overlay = document.getElementById('app-drawer');
     var titleEl = document.getElementById('drawer-title');
     var bodyEl = document.getElementById('drawer-body');
     if (!overlay || !bodyEl) return;
+    if (!this.isOpen()) this._prevFocus = document.activeElement;
 
     if (titleEl) titleEl.textContent = title || 'Details';
     bodyEl.innerHTML = contentHTML;
+    bodyEl.scrollTop = 0;
     overlay.classList.add('active');
     overlay.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('drawer-open');
 
     var panel = document.getElementById('drawer-panel');
     if (panel) panel.focus();
@@ -557,11 +551,37 @@ var Drawer = {
 
   close: function () {
     var overlay = document.getElementById('app-drawer');
-    if (!overlay) return;
+    if (!overlay || !this.isOpen()) return;
     overlay.classList.remove('active');
     overlay.setAttribute('aria-hidden', 'true');
-    if (this._prevFocus && typeof this._prevFocus.focus === 'function') {
-      this._prevFocus.focus();
+    document.body.classList.remove('drawer-open');
+    // Drop drawer routes such as #/stuck so the same link works again.
+    try {
+      var r = normalizeRoute(window.location.hash);
+      if (r === 'stuck' || r === 'recap' || r === 'settings' || r === 'about') {
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+    } catch (e) { /* ignore */ }
+    var prev = this._prevFocus;
+    this._prevFocus = null;
+    if (prev && typeof prev.focus === 'function' && document.body.contains(prev)) prev.focus();
+  },
+
+  // Escape closes the drawer and Tab stays inside it.
+  onKeydown: function (e) {
+    if (!this.isOpen()) return;
+    if (e.key === 'Escape') { e.preventDefault(); this.close(); return; }
+    if (e.key !== 'Tab') return;
+    var panel = document.getElementById('drawer-panel');
+    if (!panel) return;
+    var items = panel.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), textarea, select, [tabindex]:not([tabindex="-1"])');
+    if (!items.length) { e.preventDefault(); panel.focus(); return; }
+    var first = items[0];
+    var last = items[items.length - 1];
+    if (e.shiftKey && (document.activeElement === first || document.activeElement === panel)) {
+      e.preventDefault(); last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault(); first.focus();
     }
   }
 };
@@ -574,106 +594,30 @@ if (typeof window !== 'undefined') {
 }
 
 /* ==================== UI HELPERS ==================== */
-var UI = {
-  renderFacesSelector: function (fieldName, selectedVal) {
-    var faces = [
-      { val: 1, label: 'Not good', d: 'M 11 23 Q 18 17 25 23' },
-      { val: 2, label: 'So-so', d: 'M 12 21 L 24 21' },
-      { val: 3, label: 'Okay', d: 'M 12 20 Q 18 24 24 20' },
-      { val: 4, label: 'Good', d: 'M 11 19 Q 18 27 25 19' },
-      { val: 5, label: 'Great', d: 'M 10 18 Q 18 29 26 18 Z' }
-    ];
-    var html = '<div class="faces-selector" data-field="' + fieldName + '">';
-    faces.forEach(function (f) {
-      var isSel = (Number(selectedVal) === f.val);
-      html += '<button type="button" class="face-option' + (isSel ? ' selected' : '') + '" data-value="' + f.val + '" aria-pressed="' + isSel + '">';
-      html += '<svg class="face-svg" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
-      html += '<circle cx="18" cy="18" r="14"/>';
-      html += '<circle cx="13" cy="13" r="1.5" fill="currentColor"/>';
-      html += '<circle cx="23" cy="13" r="1.5" fill="currentColor"/>';
-      html += '<path d="' + f.d + '"/>';
-      html += '</svg>';
-      html += '<span class="face-label">' + f.label + '</span>';
-      html += '</button>';
-    });
-    html += '</div>';
-    html += '<input type="hidden" id="' + fieldName + '" name="' + fieldName + '" value="' + (selectedVal || 3) + '">';
-    return html;
-  },
+var FACES = [
+  { val: 1, label: 'Not good', d: 'M 11 23 Q 18 17 25 23' },
+  { val: 2, label: 'So-so', d: 'M 12 21 L 24 21' },
+  { val: 3, label: 'Okay', d: 'M 12 20 Q 18 24 24 20' },
+  { val: 4, label: 'Good', d: 'M 11 19 Q 18 27 25 19' },
+  { val: 5, label: 'Great', d: 'M 10 18 Q 18 29 26 18 Z' }
+];
 
+var UI = {
   $header: function () { return document.getElementById('app-header'); },
   $content: function () { return document.getElementById('app-content'); },
   $tabBar: function () { return document.getElementById('tab-bar'); },
   $app: function () { return document.getElementById('app'); },
-
-  renderHeader: function () {
-    var profile = Storage.load();
-    var h = this.$header();
-    if (!h) return;
-
-    var ctaLabel = profile ? 'Continue' : 'Get started';
-    var ctaTarget = profile ? 'today' : 'setup';
-
-    var html = '<div class="header-inner">' +
-      '<a href="#companion" class="header-wordmark" data-scroll="companion">' +
-        '<span>' + escHTML(CONTENT.appName) + '</span>' +
-        '<span class="header-wordmark-badge">Companion</span>' +
-      '</a>' +
-      '<nav class="header-nav" aria-label="Section navigation">' +
-        '<a href="#companion" class="header-nav-link" data-scroll="companion">Companion</a>' +
-        '<a href="#how" class="header-nav-link" data-scroll="how">How it works</a>' +
-        (profile ? '<a href="#setup" class="header-nav-link" data-scroll="setup">Plan</a>' : '<a href="#setup" class="header-nav-link" data-scroll="setup">Set up</a>') +
-        (profile ? '<a href="#timeline" class="header-nav-link" data-scroll="timeline">Timeline</a>' : '') +
-        (profile ? '<a href="#today" class="header-nav-link" data-scroll="today">Check-in</a>' : '') +
-        (profile ? '<a href="#results" class="header-nav-link" data-scroll="results">Results</a>' : '') +
-        (profile ? '<a href="#decide" class="header-nav-link" data-scroll="decide">Next step</a>' : '') +
-      '</nav>' +
-      '<div class="header-actions">' +
-        '<button type="button" class="btn btn-primary btn-sm" id="header-cta-btn" data-scroll="' + ctaTarget + '">' + ctaLabel + '</button>' +
-        '<button type="button" class="header-menu-btn" id="header-menu-btn" aria-label="Settings and options">' +
-          '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' +
-          '<span>Menu</span>' +
-        '</button>' +
-      '</div>' +
-    '</div>';
-
-    h.innerHTML = html;
-
-    h.querySelectorAll('[data-scroll]').forEach(function (el) {
-      el.addEventListener('click', function (e) {
-        e.preventDefault();
-        var target = el.getAttribute('data-scroll');
-        scrollToSection(target);
-      });
-    });
-
-    var menuBtn = document.getElementById('header-menu-btn');
-    if (menuBtn) {
-      menuBtn.addEventListener('click', function () {
-        openSettingsDrawer();
-      });
-    }
-  },
-
-  updateTabBar: function () {
-    // Tab bar active states managed by scrollspy
-  },
+  _toastTimer: null,
 
   ratingHTML: function (id, label, currentVal) {
-    var faces = [
-      { val: 1, label: 'Not good', d: 'M 11 23 Q 18 17 25 23' },
-      { val: 2, label: 'So-so', d: 'M 12 21 L 24 21' },
-      { val: 3, label: 'Okay', d: 'M 12 20 Q 18 24 24 20' },
-      { val: 4, label: 'Good', d: 'M 11 19 Q 18 27 25 19' },
-      { val: 5, label: 'Great', d: 'M 10 18 Q 18 29 26 18 Z' }
-    ];
-    var html = '<div class="field"><label>' + escHTML(label) + '</label>' +
-      '<div class="faces-selector" id="' + id + '" role="radiogroup" aria-label="' + escHTML(label) + '">';
-    faces.forEach(function (f) {
-      var isSel = (f.val === currentVal);
+    var cur = Number(currentVal) || 0;
+    var html = '<div class="field"><label id="' + id + '-label">' + escHTML(label) + '</label>' +
+      '<div class="faces-selector" id="' + id + '" role="radiogroup" aria-labelledby="' + id + '-label">';
+    FACES.forEach(function (f) {
+      var isSel = (f.val === cur);
       html += '<button type="button" class="face-option rating-btn' + (isSel ? ' selected' : '') +
-        '" data-value="' + f.val + '" role="radio" aria-checked="' + isSel + '" aria-label="' + f.label + '" tabindex="0">';
-      html += '<svg class="face-svg" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+        '" data-value="' + f.val + '" role="radio" aria-checked="' + isSel + '" aria-label="' + f.label + '">';
+      html += '<svg class="face-svg" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
       html += '<circle cx="18" cy="18" r="14"/>';
       html += '<circle cx="13" cy="13" r="1.5" fill="currentColor"/>';
       html += '<circle cx="23" cy="13" r="1.5" fill="currentColor"/>';
@@ -702,21 +646,17 @@ var UI = {
     });
   },
 
-  chapterProgressHTML: function (step, chapterName) {
-    var pct = Math.round(((step + 1) / 9) * 100);
-    var html = '<div class="mb-14">' +
-      '<div style="display:flex;justify-content:space-between;font-size:0.8rem;color:var(--text-secondary);font-weight:600;margin-bottom:6px;">' +
-      '<span>Step ' + (step + 1) + ' of 9</span>' +
-      '<span>' + escHTML(chapterName) + '</span>' +
-      '</div>' +
-      '<div class="progress-bar-container"><div class="progress-bar-fill" style="width:' + pct + '%;"></div></div>' +
-      '</div>';
-    return html;
-  },
-
   toast: function (msg) {
+    if (!msg) return;
     var el = document.getElementById('toast');
-    if (!el) return;
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'toast';
+      el.className = 'toast';
+      el.setAttribute('role', 'status');
+      el.setAttribute('aria-live', 'polite');
+      document.body.appendChild(el);
+    }
     el.textContent = msg;
     el.classList.add('show');
     clearTimeout(this._toastTimer);
@@ -725,660 +665,101 @@ var UI = {
     }, 2800);
   }
 };
+
 /* ==================== HELPERS ==================== */
 function escHTML(s) {
-  if (!s) return '';
-  var div = document.createElement('div');
-  div.appendChild(document.createTextNode(s));
-  return div.innerHTML;
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
-/* ==================== ONBOARDING STATE ==================== */
+// Escape, then turn line breaks into <br> (multi-line copy in CONTENT).
+function escMultiline(s) {
+  return escHTML(s).split(String.fromCharCode(10)).join('<br>');
+}
+
+/* ==================== SETUP STATE ==================== */
 var startState = {
-  step: 0, // 0 to 8: Q1 to Q9. 9: Plan summary
+  step: 0,
+  forkChoice: null,
   answers: {
     name: '',
     concern: null,
-    goalText: '',
-    products: [],
+    ownedProducts: [],
     startBucket: 'notYet',
-    routineTime: 'morning',
-    expectedWeeks: 4,
-    trackingMethod: '',
-    hardest: [],
-    routineStepCount: 3
+    routineTime: 'morning'
   },
   editing: false
 };
 
-var DRAFT_KEY = 'bwc_draft';
-
-function saveDraft() {
-  try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(startState));
-  } catch (e) {}
-}
-
-function loadDraft() {
-  try {
-    var raw = localStorage.getItem(DRAFT_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch (e) {
-    return null;
-  }
-}
-
+// Older versions stored a setup draft under this key.
 function clearDraft() {
-  try {
-    localStorage.removeItem(DRAFT_KEY);
-  } catch (e) {}
-}
-
-function resetStartState() {
-  clearDraft();
-  startState.step = 0;
-  startState.answers = {
-    name: '',
-    concern: null,
-    goalText: '',
-    products: [],
-    startBucket: 'notYet',
-    routineTime: 'morning',
-    expectedWeeks: 4,
-    trackingMethod: '',
-    hardest: [],
-    routineStepCount: 3
-  };
-  startState.editing = false;
+  try { localStorage.removeItem('bwc_draft'); } catch (e) { /* ignore */ }
 }
 
 function prefillStartState(profile) {
   if (!profile) return;
   startState.answers.name = profile.name || '';
   startState.answers.concern = profile.concern || null;
-  startState.answers.goalText = profile.goalText || '';
-  startState.answers.products = (profile.products || []).map(function (p) { return p.id; });
+  startState.answers.ownedProducts = (profile.products || []).map(function (p) { return p.id; });
   startState.answers.startBucket = profile.startBucket || 'notYet';
   startState.answers.routineTime = profile.routineTime || 'morning';
-  startState.answers.expectedWeeks = profile.expectedWeeks !== undefined ? profile.expectedWeeks : 4;
-  startState.answers.trackingMethod = profile.trackingMethod || '';
-  startState.answers.hardest = (profile.hardest || []).slice();
-  startState.answers.routineStepCount = profile.routineStepCount || 3;
   startState.editing = true;
 }
 
-
-
-function renderNavRow(step, canProceed, isOptional) {
-  var html = '<div class="mt-16" style="display:flex;gap:12px;align-items:center;">';
-  if (step > 0) {
-    html += '<button class="btn btn-secondary" id="q-back">Back</button>';
-  }
-  if (isOptional) {
-    html += '<button class="btn btn-secondary" id="q-skip" style="color:var(--text-secondary);">Skip</button>';
-  }
-  html += '<button class="btn btn-primary" style="flex:1;" id="q-next"' + (canProceed ? '' : ' disabled') + '>Next</button>';
-  html += '</div>';
-  return html;
-}
-
-function bindNavRow(nextCb, skipCb) {
-  var backBtn = document.getElementById('q-back');
-  var nextBtn = document.getElementById('q-next');
-  var skipBtn = document.getElementById('q-skip');
-
-  if (backBtn) {
-    backBtn.addEventListener('click', function () {
-      startState.step--;
-      saveDraft();
-      renderStart();
-    });
-  }
-  if (nextBtn) {
-    nextBtn.addEventListener('click', function () {
-      saveDraft();
-      nextCb();
-    });
-  }
-  if (skipBtn && skipCb) {
-    skipBtn.addEventListener('click', function () {
-      saveDraft();
-      skipCb();
-    });
-  }
-}
-
-// Q1: Name (Chapter 1: About you)
-function renderQ1(c, ans) {
-  var html = '<div class="question-slide">';
-  html += UI.chapterProgressHTML(0, 'About you');
-  html += '<h2 class="section-title mb-4">What should we call you?</h2>';
-  html += '<p class="muted mb-8" style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(CONTENT.quiz.whyWeAsk.q1) + '</p>';
-  html += '<div class="field"><label for="user-name">First name</label>' +
-    '<input type="text" id="user-name" maxlength="20" placeholder="e.g. Priya" value="' + escHTML(ans.name) + '"></div>';
-  html += renderNavRow(0, true, true);
-  html += '</div>';
-  c.innerHTML = html;
-
-  var input = document.getElementById('user-name');
-  input.focus();
-  input.addEventListener('input', function () {
-    ans.name = Utils.toTitleCase(this.value);
-    saveDraft();
+// Builds a profile from setup answers. When editing, progress data is kept.
+function buildProfile(ans, existing) {
+  var concern = ans.concern || 'hair';
+  var cfg = Utils.getConcernConfig(concern);
+  var catalogList = (CONTENT.catalog && CONTENT.catalog[concern]) || [];
+  var prevProducts = (existing && existing.concern === concern) ? (existing.products || []) : [];
+  var owned = [];
+  (ans.ownedProducts || []).forEach(function (pid) {
+    var prev = prevProducts.find(function (p) { return p.id === pid; });
+    var match = prev || catalogList.find(function (c) { return c.id === pid; });
+    if (match) owned.push(match);
   });
+  if (!owned.length && catalogList.length) owned.push(catalogList[0]);
 
-  bindNavRow(
-    function () { startState.step = 1; renderStart(); },
-    function () { ans.name = ''; startState.step = 1; renderStart(); }
-  );
-}
-
-// Q2: Concern (Chapter 1: About you)
-function renderQ2(c, ans) {
-  var html = '<div class="question-slide">';
-  html += UI.chapterProgressHTML(1, 'About you');
-  html += '<h2 class="section-title mb-4">What are you working on?</h2>';
-  html += '<p class="muted mb-8" style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(CONTENT.quiz.whyWeAsk.q2) + '</p>';
-  html += '<div class="chip-group" role="radiogroup" aria-label="Select your focus area">';
-  CONTENT.quiz.concerns.forEach(function (opt) {
-    var sel = ans.concern === opt.value;
-    html += '<button class="chip' + (sel ? ' selected' : '') +
-      '" data-val="' + opt.value + '" role="radio" aria-checked="' + sel + '">' + escHTML(opt.label) + '</button>';
-  });
-  html += '</div>';
-  html += renderNavRow(1, !!ans.concern, false);
-  html += '</div>';
-  c.innerHTML = html;
-
-  c.querySelectorAll('.chip').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var val = this.getAttribute('data-val');
-      ans.concern = val;
-      this.classList.add('pop');
-      saveDraft();
-      setTimeout(function () {
-        startState.step = 2;
-        renderStart();
-      }, 250);
-    });
-  });
-
-  bindNavRow(function () {
-    if (ans.concern) { startState.step = 2; renderStart(); }
-  });
-}
-
-// Q3: Goal (Chapter 1: About you)
-function renderQ3(c, ans) {
-  var cfg = Utils.getConcernConfig(ans.concern || 'wellness');
-  var html = '<div class="question-slide">';
-  html += UI.chapterProgressHTML(2, 'About you');
-  html += '<h2 class="section-title mb-4">What would better look like?</h2>';
-  html += '<p class="muted mb-8" style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(CONTENT.quiz.whyWeAsk.q4) + '</p>';
-  html += '<div class="chip-group" role="radiogroup" aria-label="Goal options">';
-  cfg.goalSuggestions.forEach(function (g) {
-    var sel = ans.goalText === g;
-    html += '<button class="chip' + (sel ? ' selected' : '') + '" data-val="' + escHTML(g) + '">' + escHTML(g) + '</button>';
-  });
-  var isCustom = ans.goalText && cfg.goalSuggestions.indexOf(ans.goalText) === -1;
-  html += '<button class="chip' + (isCustom ? ' selected' : '') + '" data-val="__custom">Something else\u2026</button>';
-  html += '</div>';
-
-  if (isCustom || ans.goalText === '__custom') {
-    html += '<div class="field"><label for="custom-goal">Your specific goal</label>' +
-      '<input type="text" id="custom-goal" placeholder="e.g. smoother skin on my arms" value="' + escHTML(isCustom ? ans.goalText : '') + '"></div>';
-  }
-
-  var valid = !!ans.goalText && ans.goalText !== '__custom';
-  html += renderNavRow(2, valid, false);
-  html += '</div>';
-  c.innerHTML = html;
-
-  c.querySelectorAll('.chip').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var val = this.getAttribute('data-val');
-      if (val === '__custom') {
-        ans.goalText = '__custom';
-        saveDraft();
-        renderStart();
-      } else {
-        ans.goalText = val;
-        this.classList.add('pop');
-        saveDraft();
-        setTimeout(function () {
-          startState.step = 3;
-          renderStart();
-        }, 250);
-      }
-    });
-  });
-
-  var customInput = document.getElementById('custom-goal');
-  if (customInput) {
-    customInput.focus();
-    customInput.addEventListener('input', function () {
-      ans.goalText = this.value.trim() || '__custom';
-      saveDraft();
-      var nxt = document.getElementById('q-next');
-      if (nxt) nxt.disabled = !this.value.trim();
-    });
-  }
-
-  bindNavRow(function () {
-    if (ans.goalText && ans.goalText !== '__custom') {
-      startState.step = 3;
-      renderStart();
-    }
-  });
-}
-
-// Q4: Products (Chapter 2: Your routine)
-function renderQ4(c, ans) {
-  var catalog = CONTENT.catalog[ans.concern] || [];
-  var html = '<div class="question-slide">';
-  html += UI.chapterProgressHTML(3, 'Your routine');
-  html += '<h2 class="section-title mb-4">Which Bodywise products do you use?</h2>';
-  html += '<p class="muted mb-8" style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(CONTENT.quiz.whyWeAsk.q5) + '</p>';
-  html += '<div class="chip-group" role="group" aria-label="Products">';
-  catalog.forEach(function (p) {
-    var sel = ans.products.indexOf(p.id) >= 0;
-    html += '<button class="chip' + (sel ? ' selected' : '') + '" data-val="' + p.id + '">' + escHTML(p.name) + '</button>';
-  });
-  var notUsing = ans.products.indexOf('not-using') >= 0;
-  html += '<button class="chip' + (notUsing ? ' selected' : '') + '" data-val="not-using">Not using yet</button>';
-  html += '</div>';
-
-  html += renderNavRow(3, ans.products.length > 0, false);
-  html += '</div>';
-  c.innerHTML = html;
-
-  c.querySelectorAll('.chip').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var val = this.getAttribute('data-val');
-      if (val === 'not-using') {
-        ans.products = ['not-using'];
-      } else {
-        var nuIdx = ans.products.indexOf('not-using');
-        if (nuIdx >= 0) ans.products.splice(nuIdx, 1);
-        var idx = ans.products.indexOf(val);
-        if (idx >= 0) ans.products.splice(idx, 1);
-        else ans.products.push(val);
-      }
-      saveDraft();
-      renderStart();
-    });
-  });
-
-  bindNavRow(function () {
-    if (ans.products.length > 0) {
-      startState.step = 4;
-      renderStart();
-    }
-  });
-}
-
-// Q5: Start bucket (Chapter 2: Your routine)
-function renderQ5(c, ans) {
-  var html = '<div class="question-slide">';
-  html += UI.chapterProgressHTML(4, 'Your routine');
-  html += '<h2 class="section-title mb-4">When did you start?</h2>';
-  html += '<p class="muted mb-8" style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(CONTENT.quiz.whyWeAsk.q3) + '</p>';
-  html += '<div class="segmented-group">';
-  CONTENT.quiz.startBuckets.forEach(function (sb) {
-    var sel = ans.startBucket === sb.value;
-    html += '<button class="segmented-option' + (sel ? ' selected' : '') + '" data-val="' + sb.value + '">' +
-      '<span class="segmented-option-title">' + escHTML(sb.title) + '</span>' +
-      '<span class="segmented-option-sub">' + escHTML(sb.sub) + '</span></button>';
-  });
-  html += '</div>';
-
-  html += renderNavRow(4, !!ans.startBucket, false);
-  html += '</div>';
-  c.innerHTML = html;
-
-  c.querySelectorAll('.segmented-option').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      ans.startBucket = this.getAttribute('data-val');
-      this.classList.add('pop');
-      saveDraft();
-      setTimeout(function () {
-        startState.step = 5;
-        renderStart();
-      }, 250);
-    });
-  });
-
-  bindNavRow(function () {
-    if (ans.startBucket) {
-      startState.step = 5;
-      renderStart();
-    }
-  });
-}
-
-// Q6: Routine time (Chapter 2: Your routine)
-function renderQ6(c, ans) {
-  var html = '<div class="question-slide">';
-  html += UI.chapterProgressHTML(5, 'Your routine');
-  html += '<h2 class="section-title mb-4">When can you fit it in?</h2>';
-  html += '<p class="muted mb-8" style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(CONTENT.quiz.whyWeAsk.q6) + '</p>';
-  html += '<div class="chip-group">';
-  CONTENT.quiz.routineTime.forEach(function (rt) {
-    var sel = ans.routineTime === rt.value;
-    html += '<button class="chip' + (sel ? ' selected' : '') + '" data-val="' + rt.value + '">' + escHTML(rt.label) + '</button>';
-  });
-  html += '</div>';
-
-  html += renderNavRow(5, !!ans.routineTime, false);
-  html += '</div>';
-  c.innerHTML = html;
-
-  c.querySelectorAll('.chip').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      ans.routineTime = this.getAttribute('data-val');
-      this.classList.add('pop');
-      saveDraft();
-      setTimeout(function () {
-        startState.step = 6;
-        renderStart();
-      }, 250);
-    });
-  });
-
-  bindNavRow(function () {
-    if (ans.routineTime) {
-      startState.step = 6;
-      renderStart();
-    }
-  });
-}
-
-// Q7: Expected duration (Chapter 3: Your expectations)
-function renderQ7(c, ans) {
-  var html = '<div class="question-slide">';
-  html += UI.chapterProgressHTML(6, 'Your expectations');
-  html += '<h2 class="section-title mb-4">How long did you expect results to take?</h2>';
-  html += '<p class="muted mb-8" style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(CONTENT.quiz.whyWeAsk.q7) + '</p>';
-  html += '<div class="segmented-group">';
-  CONTENT.quiz.expectationBuckets.forEach(function (eb) {
-    var sel = ans.expectedWeeks === eb.weeks;
-    html += '<button class="segmented-option' + (sel ? ' selected' : '') + '" data-weeks="' + (eb.weeks === null ? 'null' : eb.weeks) + '">' +
-      '<span class="segmented-option-title">' + escHTML(eb.title) + '</span></button>';
-  });
-  html += '</div>';
-
-  html += renderNavRow(6, true, false);
-  html += '</div>';
-  c.innerHTML = html;
-
-  c.querySelectorAll('.segmented-option').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var w = this.getAttribute('data-weeks');
-      ans.expectedWeeks = w === 'null' ? null : parseInt(w, 10);
-      this.classList.add('pop');
-      saveDraft();
-      setTimeout(function () {
-        startState.step = 7;
-        renderStart();
-      }, 250);
-    });
-  });
-
-  bindNavRow(function () {
-    startState.step = 7;
-    renderStart();
-  });
-}
-
-// Q8: Tracking method (Chapter 3: Your expectations)
-function renderQ8(c, ans) {
-  var html = '<div class="question-slide">';
-  html += UI.chapterProgressHTML(7, 'Your expectations');
-  html += '<h2 class="section-title mb-4">How do you check if it\u2019s working?</h2>';
-  html += '<p class="muted mb-8" style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(CONTENT.quiz.whyWeAsk.q9) + '</p>';
-  html += '<div class="segmented-group">';
-  CONTENT.quiz.trackingMethods.forEach(function (tm) {
-    var sel = ans.trackingMethod === tm;
-    html += '<button class="segmented-option' + (sel ? ' selected' : '') + '" data-val="' + escHTML(tm) + '">' +
-      '<span class="segmented-option-title">' + escHTML(tm) + '</span></button>';
-  });
-  html += '</div>';
-
-  html += renderNavRow(7, !!ans.trackingMethod, false);
-  html += '</div>';
-  c.innerHTML = html;
-
-  c.querySelectorAll('.segmented-option').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      ans.trackingMethod = this.getAttribute('data-val');
-      this.classList.add('pop');
-      saveDraft();
-      setTimeout(function () {
-        startState.step = 8;
-        renderStart();
-      }, 250);
-    });
-  });
-
-  bindNavRow(function () {
-    if (ans.trackingMethod) {
-      startState.step = 8;
-      renderStart();
-    }
-  });
-}
-
-// Q9: Hardest part (Chapter 3: Your expectations)
-function renderQ9(c, ans) {
-  var html = '<div class="question-slide">';
-  html += UI.chapterProgressHTML(8, 'Your expectations');
-  html += '<h2 class="section-title mb-4">What\u2019s been hardest so far?</h2>';
-  html += '<p class="muted mb-8" style="font-size:0.85rem;color:var(--text-secondary);">' + escHTML(CONTENT.quiz.whyWeAsk.q8) + '</p>';
-  html += '<div class="chip-group">';
-  CONTENT.quiz.hardestOptions.forEach(function (ho) {
-    var sel = ans.hardest.indexOf(ho) >= 0;
-    html += '<button class="chip' + (sel ? ' selected' : '') + '" data-val="' + escHTML(ho) + '">' + escHTML(ho) + '</button>';
-  });
-  html += '</div>';
-
-  html += renderNavRow(8, ans.hardest.length > 0, false);
-  html += '</div>';
-  c.innerHTML = html;
-
-  c.querySelectorAll('.chip').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var val = this.getAttribute('data-val');
-      var idx = ans.hardest.indexOf(val);
-      if (idx >= 0) {
-        ans.hardest.splice(idx, 1);
-      } else {
-        if (ans.hardest.length < 2) ans.hardest.push(val);
-      }
-      saveDraft();
-      renderStart();
-    });
-  });
-
-  bindNavRow(function () {
-    if (ans.hardest.length > 0) {
-      startState.step = 9;
-      renderStart();
-    }
-  });
-}
-
-// Step 9: Plan summary
-function renderPlanSummary(c, ans) {
-  var cfg = Utils.getConcernConfig(ans.concern || 'wellness');
-  var starters = CONTENT.starterRoutines[ans.concern] || [];
-  var catalog = CONTENT.catalog[ans.concern] || [];
-
-  var html = '<h2 class="section-title mb-8">Your plan</h2>';
-  html += '<p class="muted mb-16">Here is how we turn your goal into a realistic pace.</p>';
-
-  // 1. Goal card
-  html += '<div class="card">' +
-    '<h3 class="card-title">Your goal</h3>' +
-    '<p class="card-text" style="font-weight:600;color:var(--deep-navy);margin-bottom:4px;">' + escHTML(ans.goalText) + '</p>' +
-    '</div>';
-
-  // 2. Routine cards with step selector (1, 2, or 3 steps)
-  var count = ans.routineStepCount || 3;
-  html += '<div class="card">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
-    '<h3 class="card-title" style="margin-bottom:0;">Suggested routine</h3>' +
-    '<div class="pill-tabs" style="margin-bottom:0;padding:2px;">' +
-    '<button class="pill-tab' + (count === 1 ? ' active' : '') + '" data-steps="1" style="padding:4px 10px;min-height:32px;font-size:0.75rem;">1 step</button>' +
-    '<button class="pill-tab' + (count === 2 ? ' active' : '') + '" data-steps="2" style="padding:4px 10px;min-height:32px;font-size:0.75rem;">2 steps</button>' +
-    '<button class="pill-tab' + (count === 3 ? ' active' : '') + '" data-steps="3" style="padding:4px 10px;min-height:32px;font-size:0.75rem;">3 steps</button>' +
-    '</div></div>';
-
-  var visibleStarters = starters.slice(0, count);
-  visibleStarters.forEach(function (sr, i) {
-    var prod = catalog.find(function (p) { return p.id === sr.productId; });
-    var pName = prod ? prod.name : 'Targeted care';
-    html += '<div class="routine-card">' +
-      '<div class="routine-card-header">' +
-      '<span class="tag-chip ' + escHTML(ans.routineTime) + '">' + escHTML(ans.routineTime) + '</span>' +
-      '<span class="attr-chip">Step ' + (i + 1) + ' \u00B7 Daily</span>' +
-      '</div>' +
-      '<div class="routine-card-title">' + escHTML(pName) + '</div>' +
-      '<div class="routine-card-reason">' + escHTML(sr.reason) + '</div>' +
-      '</div>';
-  });
-  html += '</div>';
-
-  // 3. Expectation vs reality pace comparison
-  var expected = ans.expectedWeeks;
-  var usual = cfg.earlyWindowWeeks;
-  var expText = '';
-  if (expected === null) {
-    expText = 'No idea is fine. Most people see first changes around ' + usual + ' to ' + cfg.fullWindowWeeks + ' weeks.';
-  } else if (expected < usual) {
-    expText = 'You expected ' + expected + ' weeks. Most people see first changes around ' + usual + ' to ' + cfg.fullWindowWeeks + ' weeks.';
-  } else {
-    expText = 'Your expectation of ' + expected + ' weeks fits the typical window of ' + usual + ' to ' + cfg.fullWindowWeeks + ' weeks.';
-  }
-
-  html += '<div class="card">' +
-    '<h3 class="card-title">Your expectation vs usual pace</h3>' +
-    '<p class="card-text mb-12">' + expText + '</p>' +
-    '<div class="pace-comparison">' +
-    '<div class="pace-bar-row">' +
-    '<div class="pace-bar-label"><span>Your hope</span><span>' + (expected ? expected + ' wks' : 'Not sure') + '</span></div>' +
-    '<div class="pace-bar-track"><div class="pace-bar-fill user" style="width:' + (expected ? Math.min(100, (expected / 16) * 100) : 10) + '%;"></div></div>' +
-    '</div>' +
-    '<div class="pace-bar-row">' +
-    '<div class="pace-bar-label"><span>Biological window</span><span>' + usual + '\u2013' + cfg.fullWindowWeeks + ' wks</span></div>' +
-    '<div class="pace-bar-track"><div class="pace-bar-fill usual" style="width:' + Math.min(100, (usual / 16) * 100) + '%;"></div></div>' +
-    '</div>' +
-    '</div>' +
-    '</div>';
-
-  // 4. Focus / First step
-  var tempProf = {
-    concern: ans.concern,
-    expectedWeeks: ans.expectedWeeks,
-    trackingMethod: ans.trackingMethod,
-    hardest: ans.hardest
-  };
-  var focusObj = Utils.getFocus(tempProf);
-
-  html += '<div class="card" style="border-color:var(--primary-blue);background:var(--pale-blue);">' +
-    '<div class="attr-chip mb-8" style="background:#fff;color:var(--primary-blue);font-weight:700;">First action</div>' +
-    '<h3 class="card-title" style="margin-bottom:4px;">' + escHTML(focusObj.action) + '</h3>' +
-    '<p class="card-text" style="margin-bottom:0;font-size:0.85rem;">Based on what you told us, this gives you the clearest start.</p>' +
-    '</div>';
-
-  html += '<p class="mb-16"><button class="btn-link" id="edit-answers">Edit my answers</button></p>';
-
-  // Confirmation if existing profile
-  var existing = Storage.load();
-  if (existing && existing.concern && !startState.editing) {
-    html += '<div class="confirm-panel" id="replace-confirm">' +
-      '<p>Starting a new plan will replace your current data. Are you sure?</p>' +
-      '<div class="confirm-actions">' +
-      '<button class="btn btn-primary" id="confirm-replace">Yes, start fresh</button>' +
-      '<button class="btn" id="cancel-replace">Cancel</button></div></div>';
-  } else {
-    html += '<button class="btn btn-primary btn-full" id="save-plan">Start my plan \u2192</button>';
-  }
-
-  c.innerHTML = html;
-
-  // Step selector binding
-  c.querySelectorAll('[data-steps]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      ans.routineStepCount = parseInt(this.getAttribute('data-steps'), 10);
-      renderStart();
-    });
-  });
-
-  var editBtn = document.getElementById('edit-answers');
-  if (editBtn) editBtn.addEventListener('click', function () { startState.step = 0; renderStart(); });
-
-  var saveBtn = document.getElementById('save-plan');
-  if (saveBtn) saveBtn.addEventListener('click', function () { saveAndCompletePlan(focusObj); });
-
-  var confirmBtn = document.getElementById('confirm-replace');
-  if (confirmBtn) confirmBtn.addEventListener('click', function () { saveAndCompletePlan(focusObj); });
-
-  var cancelBtn = document.getElementById('cancel-replace');
-  if (cancelBtn) cancelBtn.addEventListener('click', function () { Router.navigate('#/'); });
-}
-
-function saveAndCompletePlan(focusObj) {
-  var ans = startState.answers;
-  var catalog = CONTENT.catalog[ans.concern] || [];
-  var startDate = Utils.getStartDateFromBucket(ans.startBucket, Utils.getToday());
-
-  var products = [];
-  if (ans.products.indexOf('not-using') === -1) {
-    ans.products.forEach(function (pid) {
-      var p = catalog.find(function (x) { return x.id === pid; });
-      if (p) {
-        products.push({ id: p.id, name: p.name, price: null, sizeDays: null, openedOn: startDate });
-      }
-    });
-  }
-  if (!products.length) {
-    var starters = CONTENT.starterRoutines[ans.concern] || [];
-    starters.slice(0, ans.routineStepCount || 3).forEach(function (sr) {
-      var p = catalog.find(function (x) { return x.id === sr.productId; });
-      if (p) {
-        products.push({ id: p.id, name: p.name, price: null, sizeDays: null, openedOn: startDate });
-      }
-    });
-  }
-
-  var cfg = Utils.getConcernConfig(ans.concern);
-  var defaultMarker = (cfg.markers && cfg.markers[0]) ? cfg.markers[0] : 'Watched marker';
+  var bucket = ans.startBucket || 'notYet';
+  var keepStart = existing && existing.startBucket === bucket && existing.startDate;
+  var startDate = keepStart ? existing.startDate : Utils.getStartDateFromBucket(bucket);
+  var sameConcern = !!(existing && existing.concern === concern);
 
   var profile = {
-    version: 2,
-    name: Utils.toTitleCase(ans.name),
-    concern: ans.concern,
-    goalText: ans.goalText,
+    version: 3,
+    name: Utils.toTitleCase(ans.name) || 'Friend',
+    concern: concern,
     startDate: startDate,
-    startBucket: ans.startBucket,
-    expectedWeeks: ans.expectedWeeks,
-    trackingMethod: ans.trackingMethod,
-    hardest: ans.hardest.slice(),
-    routineTime: ans.routineTime,
-    routineStepCount: ans.routineStepCount || 3,
-    marker: defaultMarker,
-    products: products,
+    startBucket: bucket,
+    routineTime: ans.routineTime || 'morning',
+    products: owned,
+    marker: (sameConcern && existing.marker) || (cfg.markers && cfg.markers[0]) || 'Observed change',
     checkins: [],
-    baseline: null,
     weeklyRatings: [],
-    flags: { seenExpect: false }
+    flags: { seenExpect: true },
+    // Neutral starting point. The first weekly review replaces it.
+    baseline: { primary: 3, secondary: 3, date: startDate, assumed: true }
   };
 
-  Storage.save(profile);
-  resetStartState();
-  Router.navigate(focusObj.route || '#/expect');
+  if (existing) {
+    profile.checkins = existing.checkins || [];
+    profile.paused = existing.paused || null;
+    profile.recapSeen = existing.recapSeen || [];
+    profile.whyStarted = existing.whyStarted || '';
+    if (existing.goalText) profile.goalText = existing.goalText;
+    if (sameConcern) {
+      profile.weeklyRatings = existing.weeklyRatings || [];
+      profile.flags = existing.flags || profile.flags;
+      if (existing.baseline) profile.baseline = existing.baseline;
+    }
+  }
+  return profile;
 }
-
 
 
 function renderDotGrid(profile) {
@@ -1435,513 +816,6 @@ function renderDotGrid(profile) {
 }
 
 
-
-function renderStartingPoint(cfg, profile) {
-  var html = '<h2 class="section-title mb-8">Set your starting point</h2>';
-  if (profile.goalText) {
-    html += '<p class="callout mb-14">Your goal: ' + escHTML(profile.goalText) + '</p>';
-  }
-  html += '<p class="muted mb-16">Turn feel into something measurable. Pick one observable marker to watch.</p>';
-
-  // 1. Pick one marker
-  var markers = cfg.markers || ['Observable change'];
-  var currentMarker = profile.marker || markers[0];
-  html += '<div class="field"><label>Pick one thing to watch</label>' +
-    '<div class="chip-group" id="marker-group">';
-  markers.forEach(function (m) {
-    var sel = currentMarker === m;
-    html += '<button class="chip' + (sel ? ' selected' : '') + '" data-val="' + escHTML(m) + '">' + escHTML(m) + '</button>';
-  });
-  html += '</div></div>';
-
-  // 2. Rating 1: Watched marker
-  html += '<div class="slider-group">' +
-    '<label id="marker-rating-label">Rate ' + escHTML(currentMarker).toLowerCase() + ' today, 1 to 5</label>' +
-    '<div class="rating-group" id="baseline-primary" role="radiogroup">';
-  for (var i = 1; i <= 5; i++) {
-    html += '<button type="button" class="rating-btn" data-value="' + i + '">' + i + '</button>';
-  }
-  html += '</div><div class="rating-labels"><span>Lowest / Severe</span><span>Highest / Best</span></div></div>';
-
-  // 3. Rating 2: Overall feeling
-  html += '<div class="slider-group">' +
-    '<label>How do you feel overall today, 1 to 5?</label>' +
-    '<div class="rating-group" id="baseline-secondary" role="radiogroup">';
-  for (var j = 1; j <= 5; j++) {
-    html += '<button type="button" class="rating-btn" data-value="' + j + '">' + j + '</button>';
-  }
-  html += '</div><div class="rating-labels"><span>Lowest</span><span>Highest</span></div></div>';
-
-  // 4. Optional note
-  html += '<div class="field"><label for="baseline-note">What do you see today? (optional)</label>' +
-    '<input type="text" id="baseline-note" placeholder="e.g. noticed on towel or brush"></div>';
-
-  // 5. Photo tip card
-  html += '<div class="card" style="background:#F9FAFB;margin:16px 0;">' +
-    '<div style="font-size:0.85rem;color:var(--text-secondary);">' +
-    '<strong>Tip:</strong> Take a photo today in the same light. Compare in 4 weeks. (The app never stores photos).' +
-    '</div></div>';
-
-  html += '<button class="btn btn-primary btn-full" id="save-baseline" disabled>Save starting point</button>';
-  return html;
-}
-
-function bindStartingPoint(profile, cfg) {
-  var chosenMarker = profile.marker || (cfg.markers && cfg.markers[0]) || 'Watched marker';
-  var primary = 0, secondary = 0;
-
-  var markerGroup = document.getElementById('marker-group');
-  if (markerGroup) {
-    markerGroup.querySelectorAll('.chip').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        markerGroup.querySelectorAll('.chip').forEach(function (c) { c.classList.remove('selected'); });
-        this.classList.add('selected');
-        chosenMarker = this.getAttribute('data-val');
-        var lbl = document.getElementById('marker-rating-label');
-        if (lbl) lbl.textContent = 'Rate ' + chosenMarker.toLowerCase() + ' today, 1 to 5';
-      });
-    });
-  }
-
-  UI.bindRating('baseline-primary', function (v) {
-    primary = v;
-    checkReady();
-  });
-  UI.bindRating('baseline-secondary', function (v) {
-    secondary = v;
-    checkReady();
-  });
-
-  function checkReady() {
-    var btn = document.getElementById('save-baseline');
-    if (btn) btn.disabled = !(primary > 0 && secondary > 0);
-  }
-
-  document.getElementById('save-baseline').addEventListener('click', function () {
-    var noteInput = document.getElementById('baseline-note');
-    profile.marker = chosenMarker;
-    profile.baseline = {
-      primary: primary,
-      secondary: secondary,
-      date: Utils.getToday(),
-      note: noteInput ? noteInput.value.trim() : ''
-    };
-    Storage.save(profile);
-    Router.navigate('#/today');
-  });
-}
-
-function renderWeeklyReview(cfg, profile, weekNum, existing) {
-  var markerLabel = profile.marker || 'watched marker';
-  var html = '<div class="card">';
-  html += '<h2 class="card-title">' + (existing ? 'Update week ' + existing.week + ' review' : 'Week ' + weekNum + ' review') + '</h2>';
-  html += '<p class="muted mb-12">Takes 30 seconds.</p>';
-
-  html += UI.ratingHTML('weekly-primary', 'How is ' + markerLabel.toLowerCase() + ' going, 1 to 5?', existing ? existing.primary : 0);
-  html += UI.ratingHTML('weekly-secondary', 'How do you feel overall, 1 to 5?', existing ? existing.secondary : 0);
-
-  html += '<div class="field"><label>Anything unusual or worrying this week?</label>';
-  html += '<div class="chip-group" id="unusual-group" role="radiogroup">';
-  html += '<button class="chip' + (existing && existing.unusual === true ? ' selected' : '') + '" data-value="yes">Yes</button>';
-  html += '<button class="chip' + (existing && existing.unusual === false ? ' selected' : '') + '" data-value="no">No</button>';
-  html += '</div></div>';
-
-  html += '<button class="btn btn-primary btn-full" id="save-weekly" disabled>Save review</button>';
-  html += '</div>';
-  return html;
-}
-
-function bindWeeklyReviewForm(profile, weekNum, existing) {
-  var primary = existing ? existing.primary : 0;
-  var secondary = existing ? existing.secondary : 0;
-  var unusual = existing ? existing.unusual : null;
-
-  UI.bindRating('weekly-primary', function (v) { primary = v; checkReady(); });
-  UI.bindRating('weekly-secondary', function (v) { secondary = v; checkReady(); });
-
-  var unusualGrp = document.getElementById('unusual-group');
-  if (unusualGrp) {
-    unusualGrp.querySelectorAll('.chip').forEach(function (chip) {
-      chip.addEventListener('click', function () {
-        unusualGrp.querySelectorAll('.chip').forEach(function (c) { c.classList.remove('selected'); });
-        this.classList.add('selected');
-        unusual = this.getAttribute('data-value') === 'yes';
-        checkReady();
-      });
-    });
-  }
-
-  function checkReady() {
-    var btn = document.getElementById('save-weekly');
-    if (btn) btn.disabled = !(primary > 0 && secondary > 0 && unusual !== null);
-  }
-
-  document.getElementById('save-weekly').addEventListener('click', function () {
-    if (!profile.weeklyRatings) profile.weeklyRatings = [];
-    var entryWeek = existing ? existing.week : weekNum;
-    var existingIdx = profile.weeklyRatings.findIndex(function (r) { return r.week === entryWeek; });
-    var entry = { week: entryWeek, date: Utils.getToday(), primary: primary, secondary: secondary, unusual: unusual };
-    if (existingIdx >= 0) {
-      profile.weeklyRatings[existingIdx] = entry;
-    } else {
-      profile.weeklyRatings.push(entry);
-    }
-    Storage.save(profile);
-    renderProgress();
-  });
-
-  checkReady();
-}
-
-/* ---- SVG Chart ---- */
-function renderChart(baseline, ratings, container, showPrimary, showSecondary) {
-  if (!container) return;
-  container.innerHTML = '';
-
-  var allWeeks = [0];
-  ratings.forEach(function (r) { allWeeks.push(r.week); });
-  var maxWeek = Math.max.apply(null, allWeeks);
-
-  var W = Math.max(300, (maxWeek + 1) * 44 + 60);
-  var H = 180;
-  var padL = 36, padR = 20, padT = 20, padB = 30;
-  var plotW = W - padL - padR;
-  var plotH = H - padT - padB;
-
-  var ns = 'http://www.w3.org/2000/svg';
-  var svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-  svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', 'Progress chart');
-
-  // Y Grid
-  for (var y = 1; y <= 5; y++) {
-    var yPos = padT + plotH - ((y - 1) / 4) * plotH;
-    var line = document.createElementNS(ns, 'line');
-    line.setAttribute('x1', padL); line.setAttribute('x2', W - padR);
-    line.setAttribute('y1', yPos); line.setAttribute('y2', yPos);
-    line.setAttribute('stroke', '#E5E7EB'); line.setAttribute('stroke-width', '1');
-    svg.appendChild(line);
-    var label = document.createElementNS(ns, 'text');
-    label.setAttribute('x', padL - 8); label.setAttribute('y', yPos + 4);
-    label.setAttribute('text-anchor', 'end'); label.setAttribute('font-size', '11');
-    label.setAttribute('fill', '#9CA3AF');
-    label.textContent = y;
-    svg.appendChild(label);
-  }
-
-  // X Labels
-  for (var w = 0; w <= maxWeek; w++) {
-    var xPos = padL + (w / maxWeek) * plotW;
-    var xLabel = document.createElementNS(ns, 'text');
-    xLabel.setAttribute('x', xPos); xLabel.setAttribute('y', H - 8);
-    xLabel.setAttribute('text-anchor', 'middle'); xLabel.setAttribute('font-size', '10');
-    xLabel.setAttribute('fill', '#9CA3AF');
-    xLabel.textContent = w === 0 ? 'Start' : 'W' + w;
-    svg.appendChild(xLabel);
-  }
-
-  function getX(week) { return padL + (week / maxWeek) * plotW; }
-  function getY(val) { return padT + plotH - ((val - 1) / 4) * plotH; }
-
-  var priData = [{ week: 0, val: baseline.primary }];
-  var secData = [{ week: 0, val: baseline.secondary }];
-  ratings.forEach(function (r) {
-    priData.push({ week: r.week, val: r.primary });
-    secData.push({ week: r.week, val: r.secondary });
-  });
-
-  function drawSeries(data, color, dashed) {
-    for (var i = 1; i < data.length; i++) {
-      var ln = document.createElementNS(ns, 'line');
-      ln.setAttribute('x1', getX(data[i-1].week)); ln.setAttribute('y1', getY(data[i-1].val));
-      ln.setAttribute('x2', getX(data[i].week)); ln.setAttribute('y2', getY(data[i].val));
-      ln.setAttribute('stroke', color); ln.setAttribute('stroke-width', '2.5');
-      if (dashed) ln.setAttribute('stroke-dasharray', '4,3');
-      svg.appendChild(ln);
-    }
-    data.forEach(function (pt) {
-      var circle = document.createElementNS(ns, 'circle');
-      circle.setAttribute('cx', getX(pt.week)); circle.setAttribute('cy', getY(pt.val));
-      circle.setAttribute('r', '4'); circle.setAttribute('fill', color);
-      svg.appendChild(circle);
-    });
-  }
-
-  if (showPrimary) drawSeries(priData, '#0B5E9E', false);
-  if (showSecondary) drawSeries(secData, '#0F2D5E', true);
-
-  container.appendChild(svg);
-}
-
-function renderProgressSummary(profile, cfg) {
-  var con = Utils.getConsistency(profile.checkins, profile.startDate);
-  var html = '<div class="section-title mt-16 mb-8">Your progress summary</div>';
-  html += '<div class="progress-summary"><dl>';
-  html += '<dt>Focus area</dt><dd>' + escHTML(cfg.label) + '</dd>';
-  html += '<dt>Goal</dt><dd>' + escHTML(profile.goalText || 'Not set') + '</dd>';
-  html += '<dt>Watched marker</dt><dd>' + escHTML(profile.marker || 'Not set') + '</dd>';
-  html += '<dt>Started</dt><dd>' + Utils.formatDate(profile.startDate) + ' (Week ' + Utils.getWeekNumber(profile.startDate) + ')</dd>';
-  html += '<dt>Starting baseline</dt><dd>Marker: ' + profile.baseline.primary + '/5, Overall: ' + profile.baseline.secondary + '/5</dd>';
-  if (profile.weeklyRatings && profile.weeklyRatings.length) {
-    html += '<dt>Weekly review history</dt><dd>';
-    profile.weeklyRatings.forEach(function (r) {
-      html += 'Week ' + r.week + ': ' + r.primary + '/5 marker, ' + r.secondary + '/5 overall' + (r.unusual ? ' (unusual flagged)' : '') + '<br>';
-    });
-    html += '</dd>';
-  }
-  html += '<dt>Consistency</dt><dd>' + con.done + ' of ' + con.total + ' days (' + Math.round(con.pct * 100) + '%)</dd>';
-  if (profile.products && profile.products.length) {
-    html += '<dt>Products used</dt><dd>';
-    profile.products.forEach(function (p) { html += escHTML(p.name) + '<br>'; });
-    html += '</dd>';
-  }
-  html += '</dl></div>';
-  html += '<div class="mt-8 mb-8" style="display:flex;gap:8px;">' +
-    '<button class="btn btn-secondary btn-sm" id="btn-print-summary" style="flex:1;">Save as PDF</button>' +
-    '<button class="btn btn-secondary btn-sm" id="btn-copy-summary" style="flex:1;">Copy summary</button>' +
-    '</div>';
-  html += '<p class="muted">No personal identifiers are included in this summary.</p>';
-  return html;
-}
-
-
-
-function renderSupport() {
-  var route = '#/stuck';
-  UI.updateTabBar(route);
-  UI.renderHeader({ title: 'Support', back: '#/' });
-
-  var profile = Storage.load();
-  var c = UI.$content();
-
-  if (!profile) {
-    Router.navigate('#/welcome');
-    return;
-  }
-
-  var cfg = Utils.getConcernConfig(profile.concern);
-  var week = Utils.getWeekNumber(profile.startDate);
-
-  var reasons = (CONTENT.support && CONTENT.support.reasons) ? CONTENT.support.reasons : [
-    { id: 'slow', label: 'Results feel slow' },
-    { id: 'cant_tell', label: 'Can not tell if it is working' },
-    { id: 'forgetting', label: 'I keep forgetting' },
-    { id: 'not_feeling_good', label: 'I am not feeling good about it' },
-    { id: 'side_effects', label: 'Side effects' },
-    { id: 'other', label: 'Something else' }
-  ];
-
-  var html = '<h1 style="font-size:1.25rem;font-weight:800;color:var(--deep-navy);margin-bottom:4px;">Feeling stuck?</h1>';
-  html += '<p class="status-line">Progress takes practice. We can help you adjust.</p>';
-
-  // Step 1: What is making it hard?
-  html += '<div class="card mb-16">';
-  html += '<h2 class="card-title" style="font-size:1rem;">What is making it hard?</h2>';
-  html += '<p class="muted mb-12">Pick what fits best right now.</p>';
-  html += '<div class="chip-group" id="stuck-reasons">';
-  reasons.forEach(function (r) {
-    html += '<button type="button" class="chip" data-id="' + r.id + '">' + escHTML(r.label) + '</button>';
-  });
-  html += '</div></div>';
-
-  // Step 2: Tailored response area
-  html += '<div id="tailored-card" style="display:none;" class="card mb-16">';
-  html += '<h2 class="card-title" id="tailored-title" style="font-size:1rem;"></h2>';
-  html += '<p class="card-text mb-14" id="tailored-body" style="line-height:1.4;"></p>';
-  html += '<div id="tailored-action-wrap"></div>';
-  html += '</div>';
-
-  // Step 3: Three clear choices
-  html += '<div class="card">';
-  html += '<h2 class="card-title" style="font-size:1rem;">Choose your next step</h2>';
-  html += '<p class="muted mb-14">No pressure, no guilt. You decide what works.</p>';
-  html += '<div style="display:flex;flex-direction:column;gap:10px;">';
-  html += '<button type="button" class="btn btn-primary btn-full" id="btn-stuck-keep">Keep going</button>';
-  html += '<button type="button" class="btn btn-secondary btn-full" id="btn-stuck-pause">Pause for now (2 weeks)</button>';
-  html += '<button type="button" class="btn btn-text-link" id="btn-stuck-done" style="text-align:center;margin-top:4px;">I am done</button>';
-  html += '</div></div>';
-
-  c.innerHTML = html;
-
-  var tailoredData = (CONTENT.support && CONTENT.support.tailored) ? CONTENT.support.tailored : {};
-
-  // Bind reason chips
-  c.querySelectorAll('#stuck-reasons .chip').forEach(function (chip) {
-    chip.addEventListener('click', function () {
-      c.querySelectorAll('#stuck-reasons .chip').forEach(function (b) { b.classList.remove('selected'); });
-      this.classList.add('selected');
-
-      var id = this.getAttribute('data-id');
-      var item = tailoredData[id] || {
-        title: 'Adjust your pace',
-        body: 'Take a pause, review your notes, or continue when you feel ready.',
-        action: 'Keep going',
-        route: '#/home'
-      };
-
-      var tCard = document.getElementById('tailored-card');
-      var tTitle = document.getElementById('tailored-title');
-      var tBody = document.getElementById('tailored-body');
-      var tActionWrap = document.getElementById('tailored-action-wrap');
-
-      tTitle.textContent = item.title;
-      tBody.textContent = item.body.replace('{week}', cfg.earlyWindowWeeks);
-
-      if (item.isReminder) {
-        tActionWrap.innerHTML = '<button type="button" class="btn btn-primary" id="btn-tailored-reminder">Remind me daily</button>';
-        document.getElementById('btn-tailored-reminder').addEventListener('click', function () {
-          downloadReminderICS(profile);
-        });
-      } else if (item.isPause) {
-        tActionWrap.innerHTML = '<button type="button" class="btn btn-secondary" id="btn-tailored-pause">Pause routine</button>';
-        document.getElementById('btn-tailored-pause').addEventListener('click', function () {
-          profile.paused = { from: Utils.getToday(), until: Utils.addDays(Utils.getToday(), 14) };
-          Storage.save(profile);
-          UI.toast('Routine paused for 2 weeks');
-          Router.navigate('#/home');
-        });
-      } else {
-        tActionWrap.innerHTML = '<a href="' + (item.route || '#/home') + '" class="btn btn-primary">' + escHTML(item.action) + '</a>';
-      }
-
-      tCard.style.display = 'block';
-      tCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    });
-  });
-
-  document.getElementById('btn-stuck-keep').addEventListener('click', function () {
-    Router.navigate('#/home');
-  });
-
-  document.getElementById('btn-stuck-pause').addEventListener('click', function () {
-    profile.paused = { from: Utils.getToday(), until: Utils.addDays(Utils.getToday(), 14) };
-    Storage.save(profile);
-    UI.toast('Routine paused for 2 weeks');
-    Router.navigate('#/home');
-  });
-
-  document.getElementById('btn-stuck-done').addEventListener('click', function () {
-    Router.navigate('#/decide');
-  });
-}
-
-
-
-function renderRecap() {
-  var profile = Storage.load();
-  if (!profile) {
-    Router.navigate('#/welcome');
-    return;
-  }
-  var c = UI.$content();
-  var cfg = Utils.getConcernConfig(profile.concern);
-  var week = Utils.getWeekNumber(profile.startDate);
-  var con = Utils.getConsistency(profile.checkins, profile.startDate);
-  var streak = Utils.getStreak(profile.checkins);
-
-  var baseRating = (profile.ratings && profile.ratings[0]) ? profile.ratings[0].primary : 3;
-  var curRating = (profile.ratings && profile.ratings.length > 0) ? profile.ratings[profile.ratings.length - 1].primary : baseRating;
-
-  if (!profile.recapSeen) profile.recapSeen = [];
-  if (profile.recapSeen.indexOf(week) === -1) {
-    profile.recapSeen.push(week);
-    Storage.save(profile);
-  }
-
-  var currentSlide = 0;
-  var slides = [
-    {
-      theme: 'navy',
-      stat: (profile.checkins || []).filter(function (ci) { return ci.done; }).length,
-      title: 'Week ' + week + ' completed',
-      body: 'Every check-in is a step forward in your routine.'
-    },
-    {
-      theme: 'navy',
-      stat: Math.round(con.pct * 100) + '%',
-      title: '28-Day Consistency',
-      body: 'Best streak so far: ' + streak + ' days steady.'
-    },
-    {
-      theme: 'cream',
-      stat: baseRating + ' → ' + curRating,
-      title: 'Your watched marker',
-      body: escHTML(profile.marker || 'Watched marker') + ' trend out of 5.'
-    },
-    {
-      theme: 'navy',
-      stat: 'W' + week,
-      title: 'Typical biology timeline',
-      body: 'Many people notice subtle internal shifts before visible changes emerge.'
-    },
-    {
-      theme: 'cream',
-      stat: '',
-      title: 'Why you started',
-      body: profile.whyStarted ? ('“' + escHTML(profile.whyStarted) + '”') : 'Taking time for yourself every single day.'
-    },
-    {
-      theme: 'navy',
-      stat: 'Next',
-      title: 'Looking ahead',
-      body: 'Next milestone: ' + ((cfg.milestones && cfg.milestones[0]) ? cfg.milestones[0].title : 'Building foundation') + '.'
-    }
-  ];
-
-  function drawSlide(idx) {
-    var s = slides[idx];
-    var html = '<div class="recap-modal-backdrop">';
-    html += '<div class="recap-card ' + (s.theme === 'cream' ? 'theme-cream' : '') + '">';
-    html += '<button type="button" class="recap-close-btn" id="recap-close" aria-label="Close recap">&times;</button>';
-    
-    html += '<div class="recap-progress-bars">';
-    for (var i = 0; i < slides.length; i++) {
-      html += '<div class="recap-segment' + (i <= idx ? ' active' : '') + '"></div>';
-    }
-    html += '</div>';
-
-    html += '<div class="recap-content">';
-    if (s.stat) html += '<div class="recap-big-stat">' + s.stat + '</div>';
-    html += '<h2 class="recap-title">' + s.title + '</h2>';
-    html += '<p class="recap-body">' + s.body + '</p>';
-    html += '</div>';
-
-    html += '<div class="recap-nav-btn-row">';
-    if (idx > 0) {
-      html += '<button type="button" class="btn btn-sm btn-secondary" id="recap-prev">Back</button>';
-    } else {
-      html += '<div></div>';
-    }
-    if (idx < slides.length - 1) {
-      html += '<button type="button" class="btn btn-sm btn-primary" id="recap-next">Next</button>';
-    } else {
-      html += '<button type="button" class="btn btn-sm btn-primary" id="recap-finish">Done</button>';
-    }
-    html += '</div>';
-
-    html += '</div></div>';
-    c.innerHTML = html;
-
-    document.getElementById('recap-close').addEventListener('click', function () {
-      Router.navigate('#/home');
-    });
-    var prev = document.getElementById('recap-prev');
-    if (prev) prev.addEventListener('click', function () { drawSlide(idx - 1); });
-    var next = document.getElementById('recap-next');
-    if (next) next.addEventListener('click', function () { drawSlide(idx + 1); });
-    var finish = document.getElementById('recap-finish');
-    if (finish) finish.addEventListener('click', function () { Router.navigate('#/home'); });
-  }
-
-  drawSlide(currentSlide);
-}
-
-
-
-
-
-
 /* ==================== SVG ICONS & AVATARS ==================== */
 var GUIDE_CHARACTER_PATH = 'M 333 64 L 344 66 L 344 68 L 335 89 L 325 103 L 305 123 L 283 139 L 279 141 L 274 132 L 299 113 L 316 96 L 326 82 L 333 65 Z M 229 81 L 244 82 L 253 90 L 256 97 L 256 105 L 253 113 L 247 119 L 240 122 L 227 121 L 218 114 L 214 104 L 215 95 L 218 89 L 223 84 L 228 82 Z M 240 93 L 232 92 L 227 96 L 227 107 L 233 111 L 240 110 L 245 104 L 245 99 L 241 94 Z M 110 104 L 112 104 L 121 116 L 132 124 L 154 133 L 181 137 L 242 136 L 256 139 L 262 142 L 267 148 L 267 159 L 260 166 L 218 180 L 212 186 L 214 188 L 264 187 L 276 190 L 283 196 L 285 201 L 285 210 L 283 214 L 275 221 L 260 227 L 212 236 L 188 243 L 179 248 L 171 256 L 166 267 L 165 326 L 166 353 L 168 354 L 201 298 L 218 266 L 220 259 L 232 260 L 233 359 L 249 332 L 264 298 L 274 265 L 278 240 L 279 238 L 290 240 L 282 280 L 267 321 L 249 356 L 231 383 L 220 379 L 219 288 L 168 377 L 157 375 L 154 331 L 154 273 L 156 261 L 160 252 L 165 245 L 177 236 L 201 227 L 254 217 L 268 212 L 274 207 L 274 203 L 272 201 L 262 198 L 212 199 L 207 197 L 201 189 L 201 181 L 206 174 L 213 170 L 250 158 L 254 156 L 256 152 L 251 149 L 240 147 L 178 148 L 152 144 L 137 139 L 114 125 L 102 110 L 109 105 Z';
 
@@ -1961,7 +835,7 @@ var SECTIONS = [
   { id: 'timeline', navLabel: 'Timeline', title: 'Your timeline', render: renderTimelineSection, dashboard: true },
   { id: 'mind', navLabel: 'Mind Space', title: 'Mind Space', render: renderMindSection, dashboard: true },
   { id: 'results', navLabel: 'Results', title: 'Your results', render: renderResultsSection, dashboard: true },
-  { id: 'decide', navLabel: 'Next step', title: 'What next?', render: renderNextStepSection, dashboard: true },
+  { id: 'nextstep', navLabel: 'Next step', title: 'What next?', render: renderNextStepSection, dashboard: true },
   { id: 'closing', navLabel: '', title: '', render: renderClosingSection }
 ];
 if (typeof window !== 'undefined') window.SECTIONS = SECTIONS;
@@ -2086,20 +960,44 @@ function updateActiveNav(id) {
 }
 
 function scrollToSection(id) {
+  if (Object.prototype.hasOwnProperty.call(ROUTE_ALIASES, id)) id = ROUTE_ALIASES[id];
   var el = document.getElementById(id);
-  if (el) {
-    var headerOffset = 70;
-    var elementPosition = el.getBoundingClientRect().top;
-    var offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-    window.scrollTo({
-      top: offsetPosition,
-      behavior: 'smooth'
-    });
-    updateActiveNav(id);
-    try {
-      history.replaceState(null, '', '#' + id);
-    } catch (e) {}
-  }
+  if (!el) return;
+  var headerOffset = 70;
+  var top = el.getBoundingClientRect().top + window.pageYOffset - headerOffset;
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  window.scrollTo({ top: top, behavior: reduce ? 'auto' : 'smooth' });
+  updateActiveNav(id);
+  try {
+    history.replaceState(null, '', '#' + id);
+  } catch (e) { /* ignore */ }
+}
+
+function renderPlaceholder(container, title) {
+  var ph = CONTENT.landing.placeholder;
+  container.innerHTML = '<div class="container">' +
+    '<div class="card placeholder-card text-center">' +
+      '<h2 class="section-title">' + escHTML(title) + '</h2>' +
+      '<h3 class="card-title">' + escHTML(ph.title) + '</h3>' +
+      '<p class="card-text">' + escHTML(ph.text) + '</p>' +
+      '<button type="button" class="btn btn-primary" data-scroll="setup">' + escHTML(ph.cta) + '</button>' +
+    '</div></div>';
+}
+
+function refreshSections(ids) {
+  ids.forEach(function (id) {
+    var sec = SECTIONS.find(function (s) { return s.id === id; });
+    var el = document.getElementById(id);
+    if (!sec || !el) return;
+    try { sec.render(el); } catch (err) { if (window.console) console.error('Could not refresh ' + id, err); }
+  });
+  renderDesktopRail();
+}
+
+function refreshPrimaryCard() {
+  var slot = document.getElementById('hero-primary-card');
+  var profile = Storage.load();
+  if (slot && profile) slot.innerHTML = getPrimaryCard(profile);
 }
 
 var _scrollSpyTicking = false;
@@ -2462,7 +1360,7 @@ function renderSmartForkScreen(container) {
   var html = '<div class="container">' +
     '<div class="section-header text-center">' +
       '<h2 class="section-title">Start your routine</h2>' +
-      '<p class="section-subline">' + escHTML(fork.subline) + '</p>' +
+      '<p class="section-subline">' + escHTML(fork.why) + '</p>' +
     '</div>' +
 
     '<div class="card" style="max-width:620px;margin:0 auto;padding:32px 24px;">' +
@@ -2479,12 +1377,12 @@ function renderSmartForkScreen(container) {
       '<div class="fork-options-grid">' +
         '<button type="button" class="fork-card-btn" data-fork="owned">' +
           '<div class="fork-btn-title">' + escHTML(fork.options[0].title) + '</div>' +
-          '<div class="fork-btn-desc">' + escHTML(fork.options[0].desc) + '</div>' +
+          '<div class="fork-btn-desc">' + escHTML(fork.options[0].sub) + '</div>' +
         '</button>' +
 
         '<button type="button" class="fork-card-btn" data-fork="exploring">' +
           '<div class="fork-btn-title">' + escHTML(fork.options[1].title) + '</div>' +
-          '<div class="fork-btn-desc">' + escHTML(fork.options[1].desc) + '</div>' +
+          '<div class="fork-btn-desc">' + escHTML(fork.options[1].sub) + '</div>' +
         '</button>' +
       '</div>' +
     '</div>' +
@@ -2778,31 +1676,7 @@ function renderBathroomShelfSetup(container) {
     });
 
     document.getElementById('btn-save-shelf').addEventListener('click', function () {
-      var concern = ans.concern || 'hair';
-      var cfg = Utils.getConcernConfig(concern);
-      var catalogList = CONTENT.catalog[concern] || [];
-      var ownedList = (ans.ownedProducts || []).map(function (pid) {
-        var match = catalogList.find(function (c) { return c.id === pid; });
-        return match || { id: pid, name: 'Targeted formula', sizeDays: 30 };
-      });
-      if (!ownedList.length && catalogList.length) {
-        ownedList.push(catalogList[0]);
-      }
-
-      var startDate = Utils.getStartDateFromBucket(ans.startBucket || 'notYet');
-      var profile = {
-        version: 3,
-        name: ans.name || 'Friend',
-        concern: concern,
-        startDate: startDate,
-        startBucket: ans.startBucket || 'notYet',
-        routineTime: ans.routineTime || 'morning',
-        products: ownedList,
-        marker: (cfg.markers && cfg.markers[0]) || 'Observed change',
-        checkins: [],
-        flags: { seenExpect: true },
-        baseline: { primary: 3, secondary: 3, date: startDate }
-      };
+      var profile = buildProfile(ans, startState.editing ? Storage.load() : null);
 
       Storage.save(profile);
       clearDraft();
@@ -2861,96 +1735,115 @@ function renderStart() {
 /* ---- Section 4: Daily Ritual (with Guide Greeting & Independent Step Toggles) ---- */
 function renderCheckinSection(container) {
   var profile = Storage.load();
+  if (!profile) { renderPlaceholder(container, 'Daily ritual'); return; }
 
-  if (!profile) {
-    profile = Utils.getDefaultProfile();
-    Storage.save(profile);
-  }
-
+  var t = CONTENT.checkin;
   var today = Utils.getToday();
   var isCheckedIn = Utils.isCheckedInToday(profile);
+  var isRest = Utils.isRestDayToday(profile) && !isCheckedIn;
+  var isPaused = Utils.isPaused(profile);
   var checkinToday = Utils.getCheckinForDate(profile, today) || { ritualDone: [] };
   var ritualDone = checkinToday.ritualDone || [];
-  var streak = Utils.getStreak(profile.checkins);
+  var streak = Utils.getStreak(profile.checkins, profile.paused);
 
   // Time-of-day greeting
   var hour = new Date().getHours();
   var timeSlot = (hour < 12) ? 'morning' : ((hour < 17) ? 'afternoon' : 'evening');
-  var greetingTpl = CONTENT.guide.greetings[timeSlot];
-  var greetingText = Utils.templateStr(greetingTpl, { name: profile.name, streak: Math.max(1, streak) });
+  var greetingText = Utils.templateStr(CONTENT.guide.greetings[timeSlot], {
+    name: profile.name || 'friend',
+    streak: Math.max(1, streak)
+  });
 
   var mindset = Utils.getDailyMindsetQuote(today);
   var templates = CONTENT.ritualTemplates || {};
-  var template = templates[profile.concern] || templates.hair;
+  var template = templates[profile.concern] || templates.wellness;
   var rTime = profile.routineTime || 'morning';
 
-  var allStepIds = [];
+  var steps = [];
   if (rTime === 'morning' || rTime === 'both') {
-    (template.am || []).forEach(function (s) { allStepIds.push(s.id); });
+    (template.am || []).forEach(function (s) { steps.push({ id: s.id, text: s.text, slot: 'AM' }); });
   }
   if (rTime === 'night' || rTime === 'both') {
-    (template.pm || []).forEach(function (s) { allStepIds.push(s.id); });
+    (template.pm || []).forEach(function (s) { steps.push({ id: s.id, text: s.text, slot: 'PM' }); });
   }
+  var allStepIds = steps.map(function (s) { return s.id; });
+  var doneCount = allStepIds.filter(function (id) { return ritualDone.indexOf(id) >= 0; }).length;
+  var canRest = Utils.canTakeRestDay(profile.checkins);
 
   var html = '<div class="container">' +
     '<div class="section-header">' +
       '<h2 class="section-title">Daily ritual</h2>' +
       '<p class="section-subline">' + Utils.formatDate(today) + ' · Day ' + (Utils.daysBetween(profile.startDate, today) + 1) + '</p>' +
-    '</div>' +
+    '</div>';
 
-    // Living Guide Persona Greeting Banner
+  if (isPaused) {
+    html += '<div class="callout pause-banner mb-24">' +
+      '<strong>' + escHTML(CONTENT.support.pauseHeading) + '</strong> · ' + escHTML(CONTENT.support.pauseBody) +
+      ' Ends ' + Utils.formatDate(profile.paused.until) + '. ' +
+      '<button type="button" class="btn-link" id="btn-resume">' + escHTML(CONTENT.support.resumeBtn) + '</button>' +
+    '</div>';
+  }
+
+  html +=
     '<div class="guide-speech-card">' +
       '<div class="guide-avatar-circle">' + ICONS.guideAvatar + '</div>' +
       '<div class="guide-speech-body">' +
         '<div class="guide-speech-title">' + escHTML(CONTENT.guide.avatarTitle) + '</div>' +
-        '<div class="guide-speech-text">' + escHTML(greetingText) + '</div>' +
+        '<div class="guide-speech-text">' + escMultiline(greetingText) + '</div>' +
       '</div>' +
     '</div>' +
 
-    // Daily Mindset & Motivation Card
-    '<div class="mindset-card mb-24" id="daily-mindset-card" role="button" tabindex="0" title="Click for another daily reassurance" style="cursor:pointer;">' +
+    '<div class="mindset-card mb-24" id="daily-mindset-card" role="button" tabindex="0" title="Show another reassurance" style="cursor:pointer;">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
         '<div class="mindset-badge">Daily mindset</div>' +
-        '<span class="mindset-card-shuffle-hint">' +
-          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg> Tap to shuffle' +
-        '</span>' +
+        '<span class="mindset-card-shuffle-hint">Tap to shuffle</span>' +
       '</div>' +
       '<div class="mindset-quote" id="mindset-quote-text" style="transition:opacity 0.2s ease;">' + escHTML(mindset.quote) + '</div>' +
       '<div class="mindset-author" id="mindset-author-text" style="transition:opacity 0.2s ease;">' + escHTML(mindset.author) + '</div>' +
     '</div>' +
 
     '<div class="checkin-grid">' +
-      // Left Column: Step-by-Step Interactive Ritual Checklist
       '<div class="checkin-left-col">' +
         '<div class="card ritual-checklist-card">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
             '<h3 class="card-title" style="margin-bottom:0;">Today\'s formula checklist</h3>' +
-            '<span class="badge badge-blue">' + ritualDone.length + '/' + allStepIds.length + ' done</span>' +
+            '<span class="badge badge-blue">' + doneCount + '/' + allStepIds.length + ' done</span>' +
           '</div>' +
           '<p class="card-text mb-14" style="font-size:0.86rem;color:var(--text-secondary);">' +
-            'Tap each step as you complete it. Uncheck anytime to redo.' +
+            'Tap each step as you complete it. Tap again to undo.' +
           '</p>';
 
-  // Render AM steps
-  if (rTime === 'morning' || rTime === 'both') {
-    (template.am || []).forEach(function (step) {
-      var isStepDone = ritualDone.indexOf(step.id) >= 0;
-      html += '<div class="ritual-step-item' + (isStepDone ? ' checked' : '') + '" data-step-id="' + step.id + '">' +
-        '<div class="ritual-checkbox">' + (isStepDone ? ICONS.check : '') + '</div>' +
-        '<span class="ritual-step-text"><strong>AM:</strong> ' + escHTML(step.text) + '</span>' +
-      '</div>';
-    });
+  steps.forEach(function (step) {
+    var isStepDone = ritualDone.indexOf(step.id) >= 0;
+    html += '<div class="ritual-step-item' + (isStepDone ? ' checked' : '') + '" data-step-id="' + step.id + '" role="checkbox" aria-checked="' + isStepDone + '" tabindex="0">' +
+      '<div class="ritual-checkbox">' + (isStepDone ? ICONS.check : '') + '</div>' +
+      '<span class="ritual-step-text"><strong>' + step.slot + ':</strong> ' + escHTML(step.text) + '</span>' +
+    '</div>';
+  });
+
+  var ringFull = isCheckedIn || isRest;
+  var ringColor = isRest && !isCheckedIn ? '#93C5FD' : '#0B5E9E';
+  var ringInner;
+  if (isCheckedIn) {
+    ringInner = '<path class="ring-check" d="M 60 92 L 80 112 L 122 70" stroke="#0B5E9E" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>';
+  } else if (isRest) {
+    ringInner = '<text x="90" y="86" text-anchor="middle" font-family="Figtree, sans-serif" font-size="14" font-weight="600" fill="#6B7280">REST</text><text x="90" y="108" text-anchor="middle" font-family="Figtree, sans-serif" font-size="17" font-weight="700" fill="#0F2D5E">DAY</text>';
+  } else {
+    ringInner = '<text x="90" y="86" text-anchor="middle" font-family="Figtree, sans-serif" font-size="14" font-weight="600" fill="#6B7280">TAP TO</text><text x="90" y="108" text-anchor="middle" font-family="Figtree, sans-serif" font-size="17" font-weight="700" fill="#0F2D5E">COMPLETE</text>';
   }
 
-  // Render PM steps
-  if (rTime === 'night' || rTime === 'both') {
-    (template.pm || []).forEach(function (step) {
-      var isStepDone = ritualDone.indexOf(step.id) >= 0;
-      html += '<div class="ritual-step-item' + (isStepDone ? ' checked' : '') + '" data-step-id="' + step.id + '">' +
-        '<div class="ritual-checkbox">' + (isStepDone ? ICONS.check : '') + '</div>' +
-        '<span class="ritual-step-text"><strong>PM:</strong> ' + escHTML(step.text) + '</span>' +
-      '</div>';
-    });
+  var statusHeading = isCheckedIn ? 'Ritual complete today' : (isRest ? t.restDayTaken : 'Daily status');
+  var statusText = isCheckedIn
+    ? 'Great consistency! Your streak is ' + streak + (streak === 1 ? ' day.' : ' days.')
+    : (isRest ? t.restDaySub : 'Complete your ritual to log today.');
+
+  var restControl = '';
+  if (isRest) {
+    restControl = '<button type="button" class="btn-text-link" id="btn-undo-rest">' + escHTML(t.undo) + '</button>';
+  } else if (!isCheckedIn) {
+    restControl = canRest
+      ? '<button type="button" class="btn-text-link" id="btn-rest">' + escHTML(t.takeRestDay) + '</button>'
+      : '<p class="muted">' + escHTML(t.restLimitNotice) + '</p>';
   }
 
   html += '<button type="button" class="btn-mark-all-done" id="btn-mark-all-done">' +
@@ -2959,23 +1852,18 @@ function renderCheckinSection(container) {
     '</button>' +
   '</div></div>' +
 
-      // Right Column: Circular 180px Check-in Ring Card
       '<div class="checkin-right-col">' +
         '<div class="card text-center" style="padding:28px 20px;">' +
           '<div class="ring-container mb-16" style="display:flex;justify-content:center;">' +
-            '<svg class="checkin-ring' + (isCheckedIn ? ' done pulse' : '') + '" width="140" height="140" viewBox="0 0 180 180" id="ring-btn" role="button" tabindex="0" aria-label="Toggle today check-in" style="cursor:pointer;">' +
+            '<svg class="checkin-ring' + (isCheckedIn ? ' done pulse' : '') + '" width="140" height="140" viewBox="0 0 180 180" id="ring-btn" role="button" tabindex="0" aria-pressed="' + isCheckedIn + '" aria-label="Toggle today\'s check-in" style="cursor:pointer;">' +
               '<circle cx="90" cy="90" r="76" stroke="#E6F2FC" stroke-width="12" fill="none"/>' +
-              '<circle class="ring-track" cx="90" cy="90" r="76" stroke="#0B5E9E" stroke-width="12" fill="none" stroke-linecap="round" stroke-dasharray="477.5" stroke-dashoffset="' + (isCheckedIn ? '0' : '477.5') + '" style="transition:stroke-dashoffset 0.6s var(--ease-out);"/>' +
-              (isCheckedIn ?
-                '<path class="ring-check" d="M 60 92 L 80 112 L 122 70" stroke="#0B5E9E" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>' :
-                '<text x="90" y="86" text-anchor="middle" font-family="Figtree, sans-serif" font-size="14" font-weight="600" fill="#6B7280">TAP TO</text><text x="90" y="108" text-anchor="middle" font-family="Figtree, sans-serif" font-size="17" font-weight="700" fill="#0F2D5E">COMPLETE</text>'
-              ) +
+              '<circle class="ring-track" cx="90" cy="90" r="76" stroke="' + ringColor + '" stroke-width="12" fill="none" stroke-linecap="round" stroke-dasharray="477.5" stroke-dashoffset="' + (ringFull ? '0' : '477.5') + '" style="transition:stroke-dashoffset 0.6s var(--ease-out);"/>' +
+              ringInner +
             '</svg>' +
           '</div>' +
-          '<h3 class="card-title mb-6">' + (isCheckedIn ? 'Ritual complete today' : 'Daily status') + '</h3>' +
-          '<p class="card-text mb-16" style="font-size:0.9rem;">' +
-            (isCheckedIn ? 'Great consistency! Your streak is ' + streak + ' days.' : 'Complete your ritual to log today.') +
-          '</p>' +
+          '<h3 class="card-title mb-6">' + escHTML(statusHeading) + '</h3>' +
+          '<p class="card-text mb-8" style="font-size:0.9rem;">' + escHTML(statusText) + '</p>' +
+          '<div class="mb-16">' + restControl + '</div>' +
           '<div class="dot-row-container mb-12">' +
             renderDotGrid(profile) +
           '</div>' +
@@ -2986,96 +1874,147 @@ function renderCheckinSection(container) {
 
   container.innerHTML = html;
 
-  // Independent Step Clicks (Clicking toggles ONLY that step)
-  
-  var currentQuoteIdx = 0;
+  // Runs `mutator` on a fresh copy of the stored profile (never a stale one),
+  // saves, then redraws everything that depends on check-ins.
+  function updateDay(date, mutator, toastMsg, focusSel) {
+    var p = Storage.load();
+    if (!p) return;
+    p.checkins = p.checkins || [];
+    var ci = Utils.getCheckinForDate(p, date);
+    if (!ci) {
+      ci = { date: date, done: false, rest: false, mood: null, ritualDone: [] };
+      p.checkins.push(ci);
+    }
+    ci.ritualDone = ci.ritualDone || [];
+    mutator(ci);
+    Storage.save(p);
+    renderCheckinSection(container);
+    refreshPrimaryCard();
+    refreshSections(['results', 'nextstep']);
+    if (focusSel) {
+      var f = container.querySelector(focusSel);
+      if (f && f.focus) f.focus();
+    }
+    if (toastMsg) UI.toast(typeof toastMsg === 'function' ? toastMsg(ci) : toastMsg);
+  }
+
+  function toggleDay(date, msgFn, focusSel) {
+    updateDay(date, function (ci) {
+      if (ci.done) {
+        ci.done = false;
+        ci.ritualDone = [];
+      } else {
+        ci.done = true;
+        ci.rest = false;
+        ci.ritualDone = allStepIds.slice();
+      }
+    }, msgFn, focusSel);
+  }
+
+  function onActivate(el, fn) {
+    el.addEventListener('click', fn);
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); }
+    });
+  }
+
+  var resumeBtn = container.querySelector('#btn-resume');
+  if (resumeBtn) {
+    resumeBtn.addEventListener('click', function () {
+      var p = Storage.load();
+      if (!p) return;
+      p.paused = null;
+      Storage.save(p);
+      renderCheckinSection(container);
+      refreshSections(['results', 'nextstep']);
+      UI.toast('Routine resumed');
+    });
+  }
+
   var mindsetCardEl = container.querySelector('#daily-mindset-card');
   if (mindsetCardEl) {
-    mindsetCardEl.addEventListener('click', function () {
+    var quoteIdx = 0;
+    onActivate(mindsetCardEl, function () {
       var quotes = CONTENT.mindsetQuotes || [];
       if (!quotes.length) return;
-      currentQuoteIdx = (currentQuoteIdx + 1) % quotes.length;
-      var nextQ = quotes[currentQuoteIdx];
+      quoteIdx = (quoteIdx + 1) % quotes.length;
+      var nextQ = quotes[quoteIdx];
       var qText = container.querySelector('#mindset-quote-text');
       var qAuth = container.querySelector('#mindset-author-text');
-      if (qText && qAuth) {
-        qText.style.opacity = '0';
-        qAuth.style.opacity = '0';
-        setTimeout(function () {
-          qText.textContent = nextQ.quote;
-          qAuth.textContent = nextQ.author;
-          qText.style.opacity = '1';
-          qAuth.style.opacity = '1';
-        }, 150);
-      }
+      if (!qText || !qAuth) return;
+      qText.style.opacity = '0';
+      qAuth.style.opacity = '0';
+      setTimeout(function () {
+        qText.textContent = nextQ.quote;
+        qAuth.textContent = nextQ.author;
+        qText.style.opacity = '1';
+        qAuth.style.opacity = '1';
+      }, 150);
     });
   }
 
   container.querySelectorAll('.ritual-step-item').forEach(function (item) {
-    item.addEventListener('click', function () {
+    onActivate(item, function () {
       var stepId = item.getAttribute('data-step-id');
-      var ci = Utils.getCheckinForDate(profile, today);
-      if (!ci) {
-        ci = { date: today, done: false, rest: false, mood: null, ritualDone: [] };
-        profile.checkins.push(ci);
-      }
-      ci.ritualDone = ci.ritualDone || [];
-      var sIdx = ci.ritualDone.indexOf(stepId);
-      if (sIdx >= 0) {
-        ci.ritualDone.splice(sIdx, 1);
-      } else {
-        ci.ritualDone.push(stepId);
-      }
-
-      // Mark done if all steps are completed
-      ci.done = (ci.ritualDone.length === allStepIds.length && allStepIds.length > 0);
-
-      Storage.save(profile);
-      renderCheckinSection(container);
-      renderDesktopRail();
-      UI.toast(ci.done ? 'All steps complete. Checked in!' : 'Step toggled');
+      updateDay(today, function (ci) {
+        var i = ci.ritualDone.indexOf(stepId);
+        if (i >= 0) ci.ritualDone.splice(i, 1);
+        else ci.ritualDone.push(stepId);
+        ci.done = allStepIds.length > 0 && allStepIds.every(function (id) { return ci.ritualDone.indexOf(id) >= 0; });
+        if (ci.ritualDone.length) ci.rest = false;
+      }, function (ci) {
+        return ci.done ? 'All steps complete. Checked in!' : 'Step updated';
+      }, '[data-step-id="' + stepId + '"]');
     });
   });
 
-  // Explicit "Mark All Done" button
   var markAllBtn = container.querySelector('#btn-mark-all-done');
   if (markAllBtn) {
     markAllBtn.addEventListener('click', function () {
-      var ci = Utils.getCheckinForDate(profile, today);
-      if (!ci) {
-        ci = { date: today, done: true, rest: false, mood: null, ritualDone: allStepIds.slice() };
-        profile.checkins.push(ci);
-      } else {
+      updateDay(today, function (ci) {
         ci.ritualDone = allStepIds.slice();
         ci.done = true;
-      }
-      Storage.save(profile);
-      renderCheckinSection(container);
-      renderDesktopRail();
-      UI.toast('All ritual steps completed!');
+        ci.rest = false;
+      }, 'All ritual steps completed!', '#btn-mark-all-done');
     });
   }
 
-  // Ring button full check-in toggle
-  var ringBtn = document.getElementById('ring-btn');
+  var ringBtn = container.querySelector('#ring-btn');
   if (ringBtn) {
-    ringBtn.addEventListener('click', function () {
-      var ci = Utils.getCheckinForDate(profile, today);
-      if (!ci) {
-        ci = { date: today, done: true, rest: false, mood: null, ritualDone: allStepIds.slice() };
-        profile.checkins.push(ci);
-      } else {
-        ci.done = !ci.done;
-        if (ci.done && (!ci.ritualDone || !ci.ritualDone.length)) {
-          ci.ritualDone = allStepIds.slice();
-        }
-      }
-      Storage.save(profile);
-      renderCheckinSection(container);
-      renderDesktopRail();
-      UI.toast(ci.done ? 'Ritual recorded for today' : 'Check-in undone');
+    onActivate(ringBtn, function () {
+      toggleDay(today, function (ci) {
+        return ci.done ? 'Ritual recorded for today' : 'Check-in undone';
+      }, '#ring-btn');
     });
   }
+
+  var restBtn = container.querySelector('#btn-rest');
+  if (restBtn) {
+    restBtn.addEventListener('click', function () {
+      updateDay(today, function (ci) {
+        ci.rest = true;
+        ci.done = false;
+        ci.ritualDone = [];
+      }, t.restDayTaken);
+    });
+  }
+
+  var undoRestBtn = container.querySelector('#btn-undo-rest');
+  if (undoRestBtn) {
+    undoRestBtn.addEventListener('click', function () {
+      updateDay(today, function (ci) { ci.rest = false; }, 'Rest day removed');
+    });
+  }
+
+  // The last few days can be filled in or corrected from the calendar dots.
+  container.querySelectorAll('.dot[data-date]').forEach(function (dot) {
+    var date = dot.getAttribute('data-date');
+    onActivate(dot, function () {
+      toggleDay(date, function (ci) {
+        return (ci.done ? 'Marked done for ' : 'Cleared ') + Utils.formatDate(date);
+      }, '.dot[data-date="' + date + '"]');
+    });
+  });
 }
 
 
@@ -3098,8 +2037,8 @@ function renderTimelineSection(container) {
   var profile = Storage.load();
 
   if (!profile) {
-    profile = Utils.getDefaultProfile();
-    Storage.save(profile);
+    // Preview only: nothing is saved until the person completes setup.
+    profile = { concern: 'hair', startDate: Utils.getToday(), checkins: [], weeklyRatings: [], products: [] };
   }
 
   var cfg = Utils.getConcernConfig(profile.concern);
@@ -3440,15 +2379,17 @@ function renderMindSection(container) {
   container.querySelectorAll('[data-mood]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var moodVal = this.getAttribute('data-mood');
-      if (profile) {
-        var c = Utils.getCheckinForDate(profile, today);
+      var freshProf = Storage.load();
+      if (freshProf) {
+        if (!Array.isArray(freshProf.checkins)) freshProf.checkins = [];
+        var c = Utils.getCheckinForDate(freshProf, Utils.getToday());
         if (!c) {
-          c = { date: today, done: false, rest: false, mood: moodVal, ritualDone: [] };
-          profile.checkins.push(c);
+          c = { date: Utils.getToday(), done: false, rest: false, mood: moodVal, ritualDone: [] };
+          freshProf.checkins.push(c);
         } else {
           c.mood = moodVal;
         }
-        Storage.save(profile);
+        Storage.save(freshProf);
       }
       container.querySelectorAll('[data-mood]').forEach(function (b) { b.classList.remove('selected', 'focus-ring-active'); });
       this.classList.add('selected', 'focus-ring-active');
@@ -3462,18 +2403,24 @@ function renderMindSection(container) {
 /* ---- Section 7: Tangible Micro-markers (Results) ---- */
 function renderResultsSection(container) {
   var profile = Storage.load();
-
-  if (!profile) {
-    profile = Utils.getDefaultProfile();
-    Storage.save(profile);
-  }
+  if (!profile) { renderPlaceholder(container, 'Your results'); return; }
 
   var verdict = Utils.getVerdict(profile);
+  if (verdict.type === 'none') {
+    verdict = {
+      type: 'checkIn', label: CONTENT.verdictNames.checkIn, message: CONTENT.stageMessages.checkInAgain,
+      cssClass: 'verdict-early', reasons: []
+    };
+  }
   var currentWk = Utils.getWeekNumber(profile.startDate);
   var cfg = Utils.getConcernConfig(profile.concern);
-  var consistencyPct = Math.round(Utils.getConsistency(profile, 30) * 100);
-  var streakDays = Utils.getStreak(profile);
+  var con = Utils.getConsistency(profile.checkins, profile.startDate, profile.paused);
+  var consistencyPct = Math.round(con.pct * 100);
+  var streakDays = Utils.getStreak(profile.checkins, profile.paused);
   var markersList = (CONTENT.microMarkers && CONTENT.microMarkers[profile.concern]) || [];
+  var ratings = profile.weeklyRatings || [];
+  var reviewDue = Utils.isWeeklyRatingDue(profile);
+  var weekLabel = currentWk > cfg.fullWindowWeeks ? 'Week ' + currentWk : 'Week ' + currentWk + ' of ' + cfg.fullWindowWeeks;
 
   // Dial calculations (radius = 38, circumference = 238.76)
   var circ = 238.76;
@@ -3481,40 +2428,40 @@ function renderResultsSection(container) {
 
   var html = '<div class="container">' +
     '<div class="section-header">' +
-      '<h2 class="section-title">Your Progress & Biological Results</h2>' +
-      '<p class="section-subline">Deep clinical analysis &middot; Week ' + currentWk + ' of ' + cfg.fullWindowWeeks + ' &middot; ' + escHTML(cfg.label) + ' Routine</p>' +
+      '<h2 class="section-title">Your progress and results</h2>' +
+      '<p class="section-subline">' + weekLabel + ' &middot; ' + escHTML(cfg.label) + ' routine</p>' +
     '</div>' +
 
     '<div class="results-bento-grid">' +
-      // Card 1: 30-Day Consistency Velocity Dial (Span 5)
+      // Card 1: 28-day consistency dial
       '<div class="results-bento-card results-bento-span-5">' +
-        '<div class="badge badge-blue mb-12">Consistency Velocity</div>' +
+        '<div class="badge badge-blue mb-12">Consistency</div>' +
         '<div class="results-score-dial-wrap">' +
-          '<svg class="results-score-dial-svg" viewBox="0 0 100 100">' +
+          '<svg class="results-score-dial-svg" viewBox="0 0 100 100" aria-hidden="true">' +
             '<circle class="results-score-dial-bg" cx="50" cy="50" r="38" />' +
             '<circle class="results-score-dial-val" cx="50" cy="50" r="38" stroke-dasharray="' + circ + '" stroke-dashoffset="' + dashoffset + '" />' +
           '</svg>' +
           '<div>' +
             '<div style="font-size:2rem;font-weight:800;color:#0F2D5E;line-height:1;">' + consistencyPct + '%</div>' +
-            '<div style="font-size:0.86rem;color:#64748B;margin-top:4px;">30-day routine adherence</div>' +
+            '<div style="font-size:0.86rem;color:#64748B;margin-top:4px;">' + escHTML(CONTENT.rings.consistency) + '</div>' +
             '<div style="margin-top:8px;">' +
               '<span class="results-delta-pill ' + (consistencyPct >= 70 ? 'positive' : 'neutral') + '">' +
-                (consistencyPct >= 70 ? '&#9650; Optimal Saturation' : '&#9644; Building Momentum') +
+                (consistencyPct >= 70 ? '&#9650; Steady pace' : '&#9644; Building momentum') +
               '</span>' +
             '</div>' +
           '</div>' +
         '</div>' +
         '<div style="margin-top:18px;padding-top:14px;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between;font-size:0.86rem;">' +
-          '<span style="color:#64748B;">Current active streak:</span>' +
-          '<strong style="color:#0B5E9E;">' + streakDays + ' continuous days</strong>' +
+          '<span style="color:#64748B;">Current streak:</span>' +
+          '<strong style="color:#0B5E9E;">' + streakDays + (streakDays === 1 ? ' day' : ' days') + '</strong>' +
         '</div>' +
       '</div>' +
 
-      // Card 2: Biological Phase Verdict & Cellular State (Span 7)
+      // Card 2: verdict
       '<div class="results-bento-card results-bento-span-7 ' + escHTML(verdict.cssClass) + '">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
           '<div class="badge mb-0" style="background:#FFFFFF;font-weight:700;">' + escHTML(verdict.label) + '</div>' +
-          '<span style="font-size:0.82rem;font-weight:600;color:#0B5E9E;">Phase Status</span>' +
+          '<span style="font-size:0.82rem;font-weight:600;color:#0B5E9E;">Where you are</span>' +
         '</div>' +
         '<h3 class="card-title" style="font-size:1.2rem;margin-bottom:6px;">' + escHTML(verdict.label) + '</h3>' +
         '<p class="card-text mb-12" style="font-size:0.92rem;line-height:1.5;">' + escHTML(verdict.message) + '</p>' +
@@ -3522,25 +2469,28 @@ function renderResultsSection(container) {
           '<div class="results-horizon-fill" style="width:' + Math.min(100, Math.round((currentWk / cfg.fullWindowWeeks) * 100)) + '%;"></div>' +
         '</div>' +
         '<div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#64748B;margin-bottom:12px;">' +
-          '<span>Week 1 (Baseline)</span>' +
-          '<span>Week ' + cfg.earlyWindowWeeks + ' (Early shifts)</span>' +
-          '<span>Week ' + cfg.fullWindowWeeks + ' (Real change)</span>' +
+          '<span>Week 1</span>' +
+          '<span>Week ' + cfg.earlyWindowWeeks + ' (early shifts)</span>' +
+          '<span>Week ' + cfg.fullWindowWeeks + ' (real change)</span>' +
         '</div>' +
         '<ul style="margin:0;padding-left:18px;font-size:0.85rem;color:#475569;">' +
           verdict.reasons.map(function (r) { return '<li>' + escHTML(r) + '</li>'; }).join('') +
         '</ul>' +
       '</div>' +
 
-      // Card 3: Observable Micro-Marker Comparison Matrix (Span 12)
+      // Card 3: markers and weekly reviews
       '<div class="results-bento-card results-bento-span-12">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">' +
           '<div>' +
-            '<h3 class="card-title" style="font-size:1.1rem;margin-bottom:2px;">Observable Micro-Marker Comparison Matrix</h3>' +
-            '<p class="card-text" style="font-size:0.86rem;color:#64748B;">Tangible physical indicators for ' + escHTML(cfg.label) + ' care</p>' +
+            '<h3 class="card-title" style="font-size:1.1rem;margin-bottom:2px;">Markers to watch</h3>' +
+            '<p class="card-text" style="font-size:0.86rem;color:#64748B;">Physical signs you can check each week for ' + escHTML(cfg.label) + ' care</p>' +
           '</div>' +
-          '<button type="button" class="btn btn-primary btn-sm" id="btn-log-micromarkers">' +
-            'Record Weekly Observation &rarr;' +
-          '</button>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+            '<button type="button" class="btn btn-secondary btn-sm" id="btn-open-recap">Week recap</button>' +
+            '<button type="button" class="btn btn-primary btn-sm" id="btn-log-micromarkers">' +
+              (reviewDue ? 'Weekly review due' : 'Record weekly review') + ' &rarr;' +
+            '</button>' +
+          '</div>' +
         '</div>' +
         '<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:12px;">';
 
@@ -3550,24 +2500,32 @@ function renderResultsSection(container) {
         '<div style="font-weight:700;color:#0F2D5E;font-size:0.92rem;">' + escHTML(m.name) + '</div>' +
         '<div style="font-size:0.8rem;color:#64748B;margin-top:2px;">' + escHTML(m.hint) + '</div>' +
       '</div>' +
-      '<div style="display:flex;gap:4px;flex-shrink:0;">' +
-        m.options.map(function (opt) {
-          return '<span class="tag-chip morning" style="font-size:0.72rem;padding:2px 8px;">' + escHTML(opt.label) + '</span>';
-        }).join('') +
-      '</div>' +
     '</div>';
   });
 
-  html += '</div></div>' +
+  html += '</div>';
 
-      // Card 4: Formula Refill & Longevity Forecast (Span 6)
+  html += '<div class="review-history" style="margin-top:18px;padding-top:14px;border-top:1px solid #E2E8F0;">' +
+    '<h4 style="font-size:0.95rem;font-weight:700;color:#0F2D5E;margin-bottom:8px;">Your weekly reviews</h4>';
+  if (ratings.length) {
+    html += '<ul style="margin:0;padding-left:18px;font-size:0.86rem;color:#475569;">';
+    ratings.forEach(function (r) {
+      html += '<li>Week ' + r.week + ': marker ' + r.primary + '/5, overall ' + r.secondary + '/5' + (r.unusual ? ' (flagged something unusual)' : '') + '</li>';
+    });
+    html += '</ul>';
+  } else {
+    html += '<p class="muted">No reviews yet. Your first one sets your starting point.</p>';
+  }
+  html += '</div></div>';
+
+  html +=
+      // Card 4: supply
       '<div class="results-bento-card results-bento-span-6">' +
-        '<div class="badge badge-blue mb-10">Formula Longevity Forecast</div>' +
-        '<h3 class="card-title" style="font-size:1.05rem;margin-bottom:8px;">Active Shelf Supply</h3>' +
+        '<div class="badge badge-blue mb-10">Formula supply</div>' +
+        '<h3 class="card-title" style="font-size:1.05rem;margin-bottom:8px;">Your shelf</h3>' +
         '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">' +
           (profile.products || []).map(function (prod) {
             var daysLeft = Utils.getDaysLeft(prod);
-            var reorder = Utils.getReorderDate(prod);
             var statusStr = (daysLeft !== null) ? (daysLeft > 0 ? (daysLeft + ' days left') : 'Refill due') : '30-day cycle';
             return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0;font-size:0.86rem;">' +
               '<span style="font-weight:600;color:#0F172A;">' + escHTML(prod.name) + '</span>' +
@@ -3576,49 +2534,45 @@ function renderResultsSection(container) {
           }).join('') +
         '</div>' +
         '<a href="https://bebodywise.com" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" style="text-align:center;display:block;">' +
-          'Refill Official Formulas on Be Bodywise &rarr;' +
+          'Refill on Be Bodywise &rarr;' +
         '</a>' +
       '</div>' +
 
-      // Card 5: Biological Truth & Grounding Reflection (Span 6)
+      // Card 5: reassurance
       '<div class="results-bento-card results-bento-span-6">' +
-        '<div class="badge badge-blue mb-10">Clinical Truth</div>' +
-        '<h3 class="card-title" style="font-size:1.05rem;margin-bottom:6px;">Quiet Compounding Care</h3>' +
+        '<div class="badge badge-blue mb-10">Good to know</div>' +
+        '<h3 class="card-title" style="font-size:1.05rem;margin-bottom:6px;">Quiet, compounding care</h3>' +
         '<p class="card-text mb-12" style="font-size:0.88rem;color:#475569;line-height:1.5;">' +
-          'Surface changes follow weeks of cellular synthesis. Daily application saturates active nutrients before mirrors reveal visible density or barrier renewal.' +
+          'Surface changes follow weeks of work under the skin and scalp. Daily care adds up before the mirror shows it.' +
         '</p>' +
         '<div style="background:#EFF6FF;padding:12px 14px;border-radius:12px;border:1px solid #BFDBFE;">' +
-          '<div style="font-weight:700;color:#1E40AF;font-size:0.84rem;margin-bottom:2px;">Pro-Tip for Week ' + currentWk + ':</div>' +
-          '<div style="font-size:0.82rem;color:#1E3A8A;">Do not switch products mid-cycle. True biological efficacy requires uninterrupted 60-to-90-day consistency.</div>' +
+          '<div style="font-weight:700;color:#1E40AF;font-size:0.84rem;margin-bottom:2px;">Tip for week ' + currentWk + '</div>' +
+          '<div style="font-size:0.82rem;color:#1E3A8A;">Judge a routine over several weeks of steady use, not a few days.</div>' +
         '</div>' +
       '</div>' +
 
     '</div>' +
+    '<p class="disclaimer text-center">' + escHTML(CONTENT.disclaimers.calm) + ' ' + escHTML(CONTENT.disclaimers.data) + '.</p>' +
   '</div>';
 
   container.innerHTML = html;
 
   var logBtn = container.querySelector('#btn-log-micromarkers');
-  if (logBtn) {
-    logBtn.addEventListener('click', function () {
-      openWeeklyReviewDrawer();
-    });
-  }
+  if (logBtn) logBtn.addEventListener('click', function () { openWeeklyReviewDrawer(); });
+  var recapBtn = container.querySelector('#btn-open-recap');
+  if (recapBtn) recapBtn.addEventListener('click', function () { openRecapDrawer(); });
 }
 
 
 /* ---- Section 8: Next Step & Bottle Burn-Rate ---- */
 function renderNextStepSection(container) {
   var profile = Storage.load();
-
-  if (!profile) {
-    profile = Utils.getDefaultProfile();
-    Storage.save(profile);
-  }
+  if (!profile) { renderPlaceholder(container, 'What next?'); return; }
 
   var verdict = Utils.getVerdict(profile);
   var primaryProduct = (profile.products && profile.products[0]) || { name: 'Main formula', sizeDays: 30 };
   var burnRate = Utils.getBurnRate(primaryProduct, profile.checkins, profile.startDate);
+  var keepType = (verdict.type === 'onTrack' || verdict.type === 'tooEarly' || verdict.type === 'checkIn');
 
   var html = '<div class="container">' +
     '<div class="section-header">' +
@@ -3626,7 +2580,6 @@ function renderNextStepSection(container) {
       '<p class="section-subline">Guidance and pack pace for your routine.</p>' +
     '</div>' +
 
-    // Bottle Burn-Rate Meter Card
     (burnRate ? (
       '<div class="card burn-rate-card mb-24">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
@@ -3638,10 +2591,10 @@ function renderNextStepSection(container) {
           '</div>' +
           (burnRate.isLow ? '<span class="badge" style="background:#FEF2F2;color:#991B1B;font-weight:700;">Reorder soon</span>' : '<span class="badge badge-blue">Stock healthy</span>') +
         '</div>' +
-        '<div class="burn-rate-meter">' +
+        '<div class="burn-rate-meter" role="img" aria-label="' + burnRate.pctUsed + ' percent used">' +
           '<div class="burn-rate-fill" style="width:' + burnRate.pctUsed + '%;"></div>' +
         '</div>' +
-        '<div style="display:flex;justify-content:space-between;font-size:0.82rem;color:var(--text-secondary);margin-top:8px;">' +
+        '<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:0.82rem;color:var(--text-secondary);margin-top:8px;">' +
           '<span>Estimated empty: ' + Utils.formatDate(burnRate.estimatedFinish) + '</span>' +
           '<span>Reorder date: ' + Utils.formatDate(burnRate.reorderDate) + ' (5 days prior)</span>' +
         '</div>' +
@@ -3649,19 +2602,19 @@ function renderNextStepSection(container) {
     ) : '') +
 
     '<div class="outcomes-grid mb-32">' +
-      '<div class="card' + (verdict.type === 'onTrack' || verdict.type === 'tooEarly' ? ' active-outcome' : '') + '" style="border-top:4px solid var(--verdict-ontrack-border);">' +
+      '<div class="card' + (keepType ? ' active-outcome' : '') + '" style="border-top:4px solid var(--verdict-ontrack-border);">' +
         '<h3 class="card-title" style="color:var(--verdict-ontrack-text);">1. Keep going</h3>' +
-        '<p class="card-text" style="font-size:0.9rem;">You are in the biological adjustment window. Maintain steady daily application.</p>' +
+        '<p class="card-text" style="font-size:0.9rem;">Your routine needs time to show. Keep your daily steps steady.</p>' +
       '</div>' +
 
       '<div class="card' + (verdict.type === 'consistency' ? ' active-outcome' : '') + '" style="border-top:4px solid var(--verdict-consistency-border);">' +
         '<h3 class="card-title" style="color:var(--verdict-consistency-text);">2. Adjust routine</h3>' +
-        '<p class="card-text" style="font-size:0.9rem;">Pair with morning or bedtime routines to keep your habit cadence steady.</p>' +
+        '<p class="card-text" style="font-size:0.9rem;">Pair your steps with a morning or bedtime habit to keep a steady rhythm.</p>' +
       '</div>' +
 
       '<div class="card' + (verdict.type === 'closer' ? ' active-outcome' : '') + '" style="border-top:4px solid var(--verdict-closer-border);">' +
         '<h3 class="card-title" style="color:var(--verdict-closer-text);">3. Closer look</h3>' +
-        '<p class="card-text" style="font-size:0.9rem;">If no changes appear after the full window, consider adjusting products.</p>' +
+        '<p class="card-text" style="font-size:0.9rem;">If nothing changes after the full window, try a new approach or ask a health professional.</p>' +
       '</div>' +
     '</div>' +
 
@@ -3674,12 +2627,8 @@ function renderNextStepSection(container) {
 
   container.innerHTML = html;
 
-  var suppBtn = document.getElementById('btn-open-support');
-  if (suppBtn) {
-    suppBtn.addEventListener('click', function () {
-      openSupportDrawer();
-    });
-  }
+  var suppBtn = container.querySelector('#btn-open-support');
+  if (suppBtn) suppBtn.addEventListener('click', function () { openSupportDrawer(); });
 }
 
 /* ---- Section 9: Closing Section ---- */
@@ -3692,17 +2641,6 @@ function renderClosingSection(container) {
     '</div>' +
   '</div>';
   container.innerHTML = html;
-}
-
-/* ---- Site Footer ---- */
-function renderSiteFooter() {
-  var footEl = document.getElementById('site-footer');
-  if (!footEl) return;
-  var f = CONTENT.footer || { line: "Built for quiet daily consistency.", privacy: "Private. Saved only on your device." };
-  footEl.innerHTML = '<div class="container">' +
-    '<p style="margin-bottom:4px;">' + escHTML(f.line) + '</p>' +
-    '<p class="muted" style="font-size:0.8rem;">' + escHTML(f.privacy) + '</p>' +
-  '</div>';
 }
 
 /* ==================== DRAWERS (OFFLINE CHATBOT & MENU RESET) ==================== */
@@ -3911,48 +2849,420 @@ function openChatbotDrawer(initialTopicId) {
 }
 
 // 2. Settings & Menu Drawer with In-Drawer Reset Confirmation
+/* ---- Weekly review drawer ---- */
+function openWeeklyReviewDrawer() {
+  var profile = Storage.load();
+  if (!profile) { Router.navigate('#/start'); return; }
+  var currentWk = Utils.getWeekNumber(profile.startDate);
+  var cfg = Utils.getConcernConfig(profile.concern);
+  var markersList = (CONTENT.microMarkers && CONTENT.microMarkers[profile.concern]) || [];
+  var existing = (profile.weeklyRatings || []).find(function (r) { return r.week === currentWk; }) || null;
+  var needsFirst = !!(profile.baseline && profile.baseline.assumed && !(profile.weeklyRatings || []).length);
+
+  var html = '<form id="weekly-review-form" novalidate>' +
+    '<p class="card-text mb-16" style="font-size:0.92rem;">' +
+      (needsFirst
+        ? 'Your first review sets your starting point. Later reviews are compared with it.'
+        : 'Check the signs below for week ' + currentWk + '. They feed your verdict.') +
+    '</p>';
+
+  markersList.forEach(function (m) {
+    html += '<div class="field mb-16">' +
+      '<label style="font-weight:700;color:var(--deep-navy);">' + escHTML(m.name) + '</label>' +
+      '<p class="muted mb-8" style="font-size:0.82rem;">' + escHTML(m.hint) + '</p>' +
+      '<div class="chip-group" data-marker-field="' + escHTML(m.id) + '" role="radiogroup" aria-label="' + escHTML(m.name) + '">';
+    m.options.forEach(function (opt) {
+      html += '<button type="button" class="chip" role="radio" aria-checked="false" data-score="' + opt.score + '">' + escHTML(opt.label) + '</button>';
+    });
+    html += '</div></div>';
+  });
+
+  if (!markersList.length) {
+    html += UI.ratingHTML('weekly-primary', 'How is ' + (profile.marker || 'your marker').toLowerCase() + ' going, 1 to 5?', existing ? existing.primary : 0);
+  }
+  html += UI.ratingHTML('weekly-secondary', 'How do you feel overall, 1 to 5?', existing ? existing.secondary : 0);
+
+  html += '<div class="field"><label id="unusual-label">Anything unusual or worrying this week?</label>' +
+    '<div class="chip-group" id="unusual-group" role="radiogroup" aria-labelledby="unusual-label">' +
+      '<button type="button" class="chip' + (existing && existing.unusual === true ? ' selected' : '') + '" role="radio" data-value="yes">Yes</button>' +
+      '<button type="button" class="chip' + (existing && existing.unusual === false ? ' selected' : '') + '" role="radio" data-value="no">No</button>' +
+    '</div></div>';
+
+  html += '<button type="submit" class="btn btn-primary btn-full mt-16" id="save-weekly" disabled>' + (existing ? 'Update week ' + currentWk + ' review' : 'Save review') + '</button>' +
+    '</form>';
+
+  Drawer.open('Weekly review · Week ' + currentWk, html, function (panelEl) {
+    var primaryRating = existing ? existing.primary : 0;
+    var secondaryRating = existing ? existing.secondary : 0;
+    var unusual = existing ? existing.unusual : null;
+    var picked = {};
+
+    function currentPrimary() {
+      if (!markersList.length) return primaryRating;
+      var scores = Object.keys(picked).map(function (k) { return picked[k]; });
+      if (scores.length < markersList.length) return 0;
+      var avg = scores.reduce(function (a, b) { return a + b; }, 0) / scores.length;
+      return Math.max(1, Math.min(5, Math.round(avg)));
+    }
+
+    function checkReady() {
+      var btn = panelEl.querySelector('#save-weekly');
+      if (btn) btn.disabled = !(currentPrimary() > 0 && secondaryRating > 0 && unusual !== null);
+    }
+
+    panelEl.querySelectorAll('[data-marker-field]').forEach(function (cg) {
+      cg.querySelectorAll('.chip').forEach(function (c) {
+        c.addEventListener('click', function () {
+          cg.querySelectorAll('.chip').forEach(function (x) { x.classList.remove('selected'); x.setAttribute('aria-checked', 'false'); });
+          c.classList.add('selected');
+          c.setAttribute('aria-checked', 'true');
+          picked[cg.getAttribute('data-marker-field')] = Number(c.getAttribute('data-score'));
+          checkReady();
+        });
+      });
+    });
+
+    if (!markersList.length) UI.bindRating('weekly-primary', function (v) { primaryRating = v; checkReady(); });
+    UI.bindRating('weekly-secondary', function (v) { secondaryRating = v; checkReady(); });
+
+    panelEl.querySelectorAll('#unusual-group .chip').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        panelEl.querySelectorAll('#unusual-group .chip').forEach(function (c) { c.classList.remove('selected'); });
+        chip.classList.add('selected');
+        unusual = chip.getAttribute('data-value') === 'yes';
+        checkReady();
+      });
+    });
+
+    checkReady();
+
+    var form = panelEl.querySelector('#weekly-review-form');
+    if (!form) return;
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var primary = currentPrimary();
+      if (!(primary > 0 && secondaryRating > 0 && unusual !== null)) return;
+
+      var fresh = Storage.load();
+      if (!fresh) return;
+      var list = fresh.weeklyRatings || [];
+      var entry = { week: currentWk, date: Utils.getToday(), primary: primary, secondary: secondaryRating, unusual: unusual };
+
+      // The first real review replaces the neutral placeholder starting point.
+      if (fresh.baseline && fresh.baseline.assumed && !list.length) {
+        fresh.baseline = { primary: primary, secondary: secondaryRating, date: Utils.getToday(), note: '' };
+      }
+      var idx = list.findIndex(function (r) { return r.week === currentWk; });
+      if (idx >= 0) list[idx] = entry; else list.push(entry);
+      list.sort(function (a, b) { return a.week - b.week; });
+      fresh.weeklyRatings = list;
+      Storage.save(fresh);
+
+      Drawer.close();
+      refreshSections(['results', 'nextstep']);
+      refreshPrimaryCard();
+      UI.toast('Weekly review saved. Verdict updated.');
+    });
+  });
+}
+
+/* ---- Support drawer (Feeling stuck?) ---- */
+function buildSummaryText(profile) {
+  var cfg = Utils.getConcernConfig(profile.concern);
+  var con = Utils.getConsistency(profile.checkins, profile.startDate, profile.paused);
+  var lines = ['Progress summary', 'Focus area: ' + cfg.label];
+  if (profile.goalText) lines.push('Goal: ' + profile.goalText);
+  lines.push('Watched marker: ' + (profile.marker || 'Not set'));
+  lines.push('Started: ' + Utils.formatDate(profile.startDate) + ' (week ' + Utils.getWeekNumber(profile.startDate) + ')');
+  lines.push('Consistency (last 28 days): ' + con.done + ' of ' + con.total + ' days (' + Math.round(con.pct * 100) + '%)');
+  (profile.weeklyRatings || []).forEach(function (r) {
+    lines.push('Week ' + r.week + ': marker ' + r.primary + '/5, overall ' + r.secondary + '/5' + (r.unusual ? ' (unusual flagged)' : ''));
+  });
+  if (profile.products && profile.products.length) {
+    lines.push('Products: ' + profile.products.map(function (p) { return p.name; }).join(', '));
+  }
+  lines.push('', CONTENT.disclaimers.calm);
+  return lines.join('\n');
+}
+
+function copyText(text, okMsg) {
+  function fallback() {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    UI.toast(ok ? okMsg : 'Could not copy. Select the text and copy it.');
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function () { UI.toast(okMsg); }, fallback);
+  } else {
+    fallback();
+  }
+}
+
+function openSupportDrawer() {
+  var S = CONTENT.support;
+  var profile = Storage.load();
+
+  if (!profile) {
+    var ph = CONTENT.landing.placeholder;
+    Drawer.open(S.title, '<p class="card-text mb-16">' + escHTML(ph.text) + '</p>' +
+      '<button type="button" class="btn btn-primary" id="support-setup">' + escHTML(ph.cta) + '</button>',
+      function (panelEl) {
+        panelEl.querySelector('#support-setup').addEventListener('click', function () {
+          Drawer.close();
+          scrollToSection('setup');
+        });
+      });
+    return;
+  }
+
+  var cfg = Utils.getConcernConfig(profile.concern);
+  var html = '<h3 class="card-title" style="font-size:1rem;">' + escHTML(S.step1Title) + '</h3>' +
+    '<p class="muted mb-12">' + escHTML(S.step1Subtitle) + '</p>' +
+    '<div class="chip-group" id="stuck-reasons" role="radiogroup" aria-label="' + escHTML(S.step1Title) + '">';
+  S.reasons.forEach(function (r) {
+    html += '<button type="button" class="chip" role="radio" aria-checked="false" data-id="' + escHTML(r.id) + '">' + escHTML(r.label) + '</button>';
+  });
+  html += '</div>' +
+    '<div id="tailored-card" class="card mb-16" style="display:none;" aria-live="polite">' +
+      '<h3 class="card-title" id="tailored-title" style="font-size:1rem;"></h3>' +
+      '<p class="card-text mb-14" id="tailored-body"></p>' +
+      '<div id="tailored-action-wrap"></div>' +
+    '</div>' +
+    '<div id="stuck-choices" class="card">' +
+      '<h3 class="card-title" style="font-size:1rem;">' + escHTML(S.choicesTitle) + '</h3>' +
+      '<p class="muted mb-14">No pressure, no guilt. You decide what works.</p>' +
+      '<div style="display:flex;flex-direction:column;gap:10px;">' +
+        '<button type="button" class="btn btn-primary btn-full" id="btn-stuck-keep">' + escHTML(S.choices.keepGoing) + '</button>' +
+        '<button type="button" class="btn btn-secondary btn-full" id="btn-stuck-pause">' + escHTML(S.choices.pauseForNow) + ' (2 weeks)</button>' +
+        '<button type="button" class="btn-text-link" id="btn-stuck-done" style="text-align:center;">' + escHTML(S.choices.imDone) + '</button>' +
+      '</div>' +
+    '</div>';
+
+  Drawer.open(S.title, html, function (panelEl) {
+    function pauseRoutine() {
+      var p = Storage.load();
+      if (!p) return;
+      var today = Utils.getToday();
+      p.paused = { from: today, until: Utils.addDays(today, 13) };
+      Storage.save(p);
+      Drawer.close();
+      refreshSections(['today', 'results', 'nextstep']);
+      refreshPrimaryCard();
+      UI.toast('Routine paused for 2 weeks');
+    }
+
+    panelEl.querySelectorAll('#stuck-reasons .chip').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        panelEl.querySelectorAll('#stuck-reasons .chip').forEach(function (b) { b.classList.remove('selected'); b.setAttribute('aria-checked', 'false'); });
+        chip.classList.add('selected');
+        chip.setAttribute('aria-checked', 'true');
+
+        var item = S.tailored[chip.getAttribute('data-id')] || S.tailored.other;
+        panelEl.querySelector('#tailored-title').textContent = item.title;
+        panelEl.querySelector('#tailored-body').textContent = Utils.templateStr(item.body, { week: cfg.earlyWindowWeeks });
+
+        var wrap = panelEl.querySelector('#tailored-action-wrap');
+        var btnClass = item.isPause ? 'btn btn-secondary' : 'btn btn-primary';
+        wrap.innerHTML = '<button type="button" class="' + btnClass + '" id="btn-tailored-action">' + escHTML(item.action) + '</button>';
+        wrap.querySelector('#btn-tailored-action').addEventListener('click', function () {
+          if (item.isReminder) {
+            Utils.downloadICS('Daily check-in', 'Open Progress Companion and log today\'s routine.', 'DAILY');
+          } else if (item.isPause) {
+            pauseRoutine();
+          } else {
+            Drawer.close();
+            Router.navigate(item.route || '#/home');
+          }
+        });
+
+        var card = panelEl.querySelector('#tailored-card');
+        card.style.display = 'block';
+        if (card.scrollIntoView) card.scrollIntoView({ block: 'nearest' });
+      });
+    });
+
+    panelEl.querySelector('#btn-stuck-keep').addEventListener('click', function () { Drawer.close(); });
+    panelEl.querySelector('#btn-stuck-pause').addEventListener('click', pauseRoutine);
+    panelEl.querySelector('#btn-stuck-done').addEventListener('click', function () {
+      var summary = buildSummaryText(Storage.load() || profile);
+      panelEl.innerHTML = '<h3 class="card-title" style="font-size:1.1rem;">' + escHTML(S.doneHeading) + '</h3>' +
+        '<p class="card-text mb-14">' + escHTML(S.doneBody) + '</p>' +
+        '<pre class="summary-pre">' + escHTML(summary) + '</pre>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">' +
+          '<button type="button" class="btn btn-primary btn-sm" id="btn-copy-summary">Copy summary</button>' +
+          '<button type="button" class="btn btn-secondary btn-sm" id="btn-summary-back">Back</button>' +
+        '</div>';
+      panelEl.querySelector('#btn-copy-summary').addEventListener('click', function () { copyText(summary, 'Summary copied'); });
+      panelEl.querySelector('#btn-summary-back').addEventListener('click', function () { openSupportDrawer(); });
+    });
+  });
+}
+
+/* ---- Week recap drawer ---- */
+// Where a rating sits against the typical range for a week (linear between points).
+function getBandStatus(cfg, week, rating) {
+  var band = cfg && cfg.typicalBand;
+  if (!band || !band.length || !rating) return null;
+  var low, high;
+  if (week <= band[0].week) {
+    low = band[0].low; high = band[0].high;
+  } else if (week >= band[band.length - 1].week) {
+    low = band[band.length - 1].low; high = band[band.length - 1].high;
+  } else {
+    for (var i = 1; i < band.length; i++) {
+      if (week <= band[i].week) {
+        var a = band[i - 1], b = band[i];
+        var f = (week - a.week) / (b.week - a.week);
+        low = a.low + (b.low - a.low) * f;
+        high = a.high + (b.high - a.high) * f;
+        break;
+      }
+    }
+  }
+  return rating < low ? 'below' : (rating > high ? 'above' : 'inside');
+}
+
+function openRecapDrawer() {
+  var R = CONTENT.recap;
+  var profile = Storage.load();
+  if (!profile) {
+    var ph = CONTENT.landing.placeholder;
+    Drawer.open(R.title, '<p class="card-text mb-16">' + escHTML(ph.text) + '</p>' +
+      '<button type="button" class="btn btn-primary" id="recap-setup">' + escHTML(ph.cta) + '</button>',
+      function (panelEl) {
+        panelEl.querySelector('#recap-setup').addEventListener('click', function () {
+          Drawer.close();
+          scrollToSection('setup');
+        });
+      });
+    return;
+  }
+
+  var cfg = Utils.getConcernConfig(profile.concern);
+  var week = Utils.getWeekNumber(profile.startDate);
+  var con = Utils.getConsistency(profile.checkins, profile.startDate, profile.paused);
+  var best = Utils.getBestStreak(profile.checkins);
+  var weekStart = Utils.addDays(Utils.getToday(), -6);
+  var count = (profile.checkins || []).filter(function (c) { return c.done && c.date >= weekStart; }).length;
+  var ratings = profile.weeklyRatings || [];
+  var startRating = profile.baseline ? profile.baseline.primary : null;
+  var currentRating = ratings.length ? ratings[ratings.length - 1].primary : startRating;
+
+  var slides = [];
+  slides.push({
+    stat: String(count), theme: 'navy',
+    title: Utils.templateStr(R.slide1Heading, { week: week }),
+    body: count ? Utils.templateStr(R.slide1Sub, { count: count }) : R.slide1FreshSub
+  });
+  slides.push({
+    stat: Math.round(con.pct * 100) + '%', theme: 'navy',
+    title: R.consistencyTitle,
+    body: Utils.templateStr(R.consistencySub, { pct: Math.round(con.pct * 100), streak: best })
+  });
+  if (startRating !== null) {
+    slides.push({
+      stat: startRating + ' → ' + currentRating, theme: 'cream',
+      title: R.markerTitle,
+      body: Utils.templateStr(R.markerSub, { startRating: startRating, currentRating: currentRating })
+    });
+  }
+  var status = getBandStatus(cfg, week, currentRating);
+  if (status) {
+    var statusText = CONTENT.typicalBandStatus[status];
+    slides.push({
+      stat: 'W' + week, theme: 'navy',
+      title: R.typicalTitle,
+      body: Utils.templateStr(R.typicalSub, { status: statusText.charAt(0).toLowerCase() + statusText.slice(1), week: week })
+    });
+  }
+  slides.push({
+    stat: 'Next', theme: 'cream',
+    title: R.nextTitle,
+    body: Utils.templateStr(R.nextSub, { milestone: getMilestoneForWeek(cfg, week + 1).title })
+  });
+
+  Drawer.open(R.title, '<div id="recap-host"></div>', function (panelEl) {
+    var host = panelEl.querySelector('#recap-host');
+    function draw(idx) {
+      var s = slides[idx];
+      var h = '<div class="recap-card' + (s.theme === 'cream' ? ' theme-cream' : '') + '" style="margin:0 auto;">' +
+        '<div class="recap-progress-bars">';
+      for (var i = 0; i < slides.length; i++) h += '<div class="recap-segment' + (i <= idx ? ' active' : '') + '"></div>';
+      h += '</div><div class="recap-content" aria-live="polite">' +
+        '<div class="recap-big-stat">' + escHTML(s.stat) + '</div>' +
+        '<h3 class="recap-title">' + escHTML(s.title) + '</h3>' +
+        '<p class="recap-body">' + escHTML(s.body) + '</p>' +
+      '</div><div class="recap-nav-btn-row">' +
+        (idx > 0 ? '<button type="button" class="btn btn-sm btn-secondary" id="recap-prev">Back</button>' : '<span></span>') +
+        (idx < slides.length - 1
+          ? '<button type="button" class="btn btn-sm btn-primary" id="recap-next">Next</button>'
+          : '<button type="button" class="btn btn-sm btn-primary" id="recap-finish">' + escHTML(R.close) + '</button>') +
+      '</div></div>';
+      host.innerHTML = h;
+      var prev = host.querySelector('#recap-prev');
+      var next = host.querySelector('#recap-next');
+      var fin = host.querySelector('#recap-finish');
+      if (prev) prev.addEventListener('click', function () { draw(idx - 1); });
+      if (next) next.addEventListener('click', function () { draw(idx + 1); });
+      if (fin) fin.addEventListener('click', function () { Drawer.close(); });
+      var focusEl = next || fin;
+      if (focusEl) focusEl.focus();
+    }
+    draw(0);
+  });
+}
+
+/* ---- Settings & menu drawer ---- */
 function openSettingsDrawer() {
   var html = '<div class="card mb-16">' +
-    '<h3 class="card-title" style="font-size:1rem;margin-bottom:8px;">Brand Intro</h3>' +
-    '<p class="card-text mb-12" style="font-size:0.88rem;">Watch the 6-second lilac handwritten logo story animation.</p>' +
+    '<h3 class="card-title" style="font-size:1rem;margin-bottom:8px;">Brand intro</h3>' +
+    '<p class="card-text mb-12" style="font-size:0.88rem;">Watch the short handwritten logo story again.</p>' +
     '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
-      '<button type="button" class="btn btn-secondary btn-sm" id="btn-replay-intro">Replay Brand Intro</button>' +
-      '<button type="button" class="btn btn-primary btn-sm" id="btn-replay-bee">Guide Walkthrough (BEE)</button>' +
+      '<button type="button" class="btn btn-secondary btn-sm" id="btn-replay-intro">Replay brand intro</button>' +
+      '<button type="button" class="btn btn-primary btn-sm" id="btn-replay-bee">Guide walkthrough (BEE)</button>' +
     '</div>' +
   '</div>' +
 
   '<div class="card mb-16">' +
-    '<h3 class="card-title" style="font-size:1rem;margin-bottom:8px;">Data & Backup</h3>' +
-    '<p class="card-text mb-12" style="font-size:0.88rem;">All your data is saved privately in your browser.</p>' +
-    '<div style="display:flex;gap:10px;">' +
-      '<button type="button" class="btn btn-secondary btn-sm" id="btn-export-json">Export data</button>' +
+    '<h3 class="card-title" style="font-size:1rem;margin-bottom:8px;">Data and backup</h3>' +
+    '<p class="card-text mb-12" style="font-size:0.88rem;">' + escHTML(CONTENT.checkin.backupNote) + '.</p>' +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+      '<button type="button" class="btn btn-secondary btn-sm" id="btn-export-json">' + escHTML(CONTENT.checkin.backupBtn) + '</button>' +
+      '<button type="button" class="btn btn-secondary btn-sm" id="btn-restore-json">' + escHTML(CONTENT.checkin.restoreBtn) + '</button>' +
+      '<input type="file" id="restore-file" accept="application/json,.json" hidden>' +
     '</div>' +
   '</div>' +
 
   '<div class="card mb-16" style="border:1.5px solid #FCA5A5;background:#FFF5F5;">' +
-    '<h3 class="card-title" style="font-size:1rem;color:#991B1B;margin-bottom:6px;">Start Fresh / Reset</h3>' +
+    '<h3 class="card-title" style="font-size:1rem;color:#991B1B;margin-bottom:6px;">Start fresh</h3>' +
     '<p class="card-text mb-12" style="font-size:0.86rem;color:#7F1D1D;">' +
-      'Want to test as a first-time visitor or clear your current routine?' +
+      'Clear your current routine and begin again as a new visitor.' +
     '</p>' +
     '<div id="reset-action-area">' +
-      '<button type="button" class="btn btn-sm" id="btn-trigger-reset" style="background:#DC2626;color:#FFFFFF;border:none;">Reset all data & start fresh</button>' +
+      '<button type="button" class="btn btn-sm" id="btn-trigger-reset" style="background:#DC2626;color:#FFFFFF;border:none;">Reset all data and start fresh</button>' +
     '</div>' +
   '</div>' +
 
   '<div class="card">' +
     '<h3 class="card-title" style="font-size:1rem;margin-bottom:8px;">About Bodywise Companion</h3>' +
-    '<p class="card-text" style="font-size:0.88rem;margin-bottom:8px;">Built for quiet daily consistency and objective micro-marker tracking.</p>' +
-    '<p class="muted" style="font-size:0.8rem;">Version 3.2.0 · Private and offline capable.</p>' +
+    '<p class="card-text" style="font-size:0.88rem;margin-bottom:8px;">Built for quiet daily consistency and objective marker tracking.</p>' +
+    '<p class="muted" style="font-size:0.8rem;">Version ' + escHTML(CONTENT.version) + ' · Private and offline capable.</p>' +
   '</div>';
 
-  Drawer.open('Settings & Options', html, function (panelEl) {
+  Drawer.open('Settings and options', html, function (panelEl) {
     var replayBtn = panelEl.querySelector('#btn-replay-intro');
     if (replayBtn) {
       replayBtn.addEventListener('click', function () {
         Drawer.close();
-        if (typeof window.replayIntro === 'function') {
-          window.replayIntro();
-        }
+        if (typeof window.replayIntro === 'function') window.replayIntro();
       });
     }
 
@@ -3960,20 +3270,57 @@ function openSettingsDrawer() {
     if (replayBeeBtn) {
       replayBeeBtn.addEventListener('click', function () {
         Drawer.close();
-        if (typeof window.replayIntroWithBee === 'function') {
-          window.replayIntroWithBee();
-        }
+        if (typeof window.replayIntroWithBee === 'function') window.replayIntroWithBee();
       });
     }
 
     var exportBtn = panelEl.querySelector('#btn-export-json');
     if (exportBtn) {
       exportBtn.addEventListener('click', function () {
-        var dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(Storage.exportJSON());
-        var dlAnchor = document.createElement('a');
-        dlAnchor.setAttribute('href', dataStr);
-        dlAnchor.setAttribute('download', 'bodywise-companion-backup.json');
-        dlAnchor.click();
+        if (!Storage.load()) { UI.toast('Nothing to back up yet.'); return; }
+        try {
+          var blob = new Blob([Storage.exportJSON()], { type: 'application/json' });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = 'bodywise-companion-backup-' + Utils.getToday() + '.json';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+        } catch (err) {
+          UI.toast('Could not create the backup file.');
+        }
+      });
+    }
+
+    var restoreBtn = panelEl.querySelector('#btn-restore-json');
+    var restoreFile = panelEl.querySelector('#restore-file');
+    if (restoreBtn && restoreFile) {
+      restoreBtn.addEventListener('click', function () { restoreFile.click(); });
+      restoreFile.addEventListener('change', function () {
+        var file = restoreFile.files && restoreFile.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+          var data;
+          try { data = JSON.parse(String(reader.result)); } catch (err) { data = null; }
+          var valid = data && typeof data === 'object' && !Array.isArray(data) &&
+            CONTENT.concerns[data.concern] && /^\d{4}-\d{2}-\d{2}$/.test(String(data.startDate || ''));
+          if (!valid) { UI.toast(CONTENT.checkin.restoreError); return; }
+          if (!window.confirm(CONTENT.checkin.restoreConfirm + '.')) return;
+          data = migrateProfile(data);
+          if (!Array.isArray(data.checkins)) data.checkins = [];
+          if (!Array.isArray(data.weeklyRatings)) data.weeklyRatings = [];
+          if (!Array.isArray(data.products)) data.products = [];
+          if (!data.flags || typeof data.flags !== 'object') data.flags = { seenExpect: true };
+          Storage.save(data);
+          Drawer.close();
+          renderAllSections();
+          UI.toast(CONTENT.checkin.restoreSuccess);
+        };
+        reader.onerror = function () { UI.toast(CONTENT.checkin.restoreError); };
+        reader.readAsText(file);
       });
     }
 
@@ -3982,23 +3329,21 @@ function openSettingsDrawer() {
     if (triggerResetBtn && resetArea) {
       triggerResetBtn.addEventListener('click', function () {
         resetArea.innerHTML = '<div style="background:#FFFFFF;border:1px solid #EF4444;border-radius:8px;padding:12px;margin-top:6px;">' +
-          '<p style="font-size:0.84rem;font-weight:600;color:#991B1B;margin-bottom:10px;">Clear saved routine and test as a first-time visitor?</p>' +
+          '<p style="font-size:0.84rem;font-weight:600;color:#991B1B;margin-bottom:10px;">This permanently deletes your routine and history. Continue?</p>' +
           '<div style="display:flex;gap:8px;">' +
             '<button type="button" class="btn btn-sm" id="btn-confirm-reset" style="background:#DC2626;color:#FFFFFF;border:none;">Yes, clear all data</button>' +
             '<button type="button" class="btn btn-secondary btn-sm" id="btn-cancel-reset">Cancel</button>' +
           '</div>' +
         '</div>';
 
-        panelEl.querySelector('#btn-cancel-reset').addEventListener('click', function () {
-          openSettingsDrawer();
-        });
+        panelEl.querySelector('#btn-cancel-reset').addEventListener('click', function () { openSettingsDrawer(); });
 
         panelEl.querySelector('#btn-confirm-reset').addEventListener('click', function () {
           Storage.reset();
-          try { sessionStorage.removeItem('bwc_intro_seen'); } catch (e) {}
+          try { sessionStorage.removeItem('bwc_intro_seen'); } catch (e) { /* ignore */ }
           clearDraft();
           Drawer.close();
-          window.location.hash = '';
+          try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch (e) { /* ignore */ }
           window.location.reload();
         });
       });
@@ -4010,64 +3355,10 @@ function openAboutDrawer() {
   openSettingsDrawer();
 }
 
+
+
 /* ---- Weekly Review Drawer ---- */
-function openWeeklyReviewDrawer() {
-  var profile = Storage.load();
-  if (!profile) return;
-  var currentWk = Utils.getWeekNumber(profile.startDate);
-  var markersList = (CONTENT.microMarkers && CONTENT.microMarkers[profile.concern]) || [];
 
-  var html = '<form id="weekly-review-form">' +
-    '<p class="card-text mb-16" style="font-size:0.92rem;">' +
-      'Check tangible markers for Week ' + currentWk + '. These help your biological verdict.' +
-    '</p>';
-
-  markersList.forEach(function (m, idx) {
-    html += '<div class="field mb-16">' +
-      '<label style="font-weight:700;color:var(--deep-navy);">' + escHTML(m.name) + '</label>' +
-      '<p class="muted mb-8" style="font-size:0.82rem;">' + escHTML(m.hint) + '</p>' +
-      '<div class="chip-group" data-marker-field="' + m.id + '">';
-    m.options.forEach(function (opt, oIdx) {
-      html += '<button type="button" class="chip' + (oIdx === 1 ? ' selected' : '') + '" data-score="' + opt.score + '">' +
-        escHTML(opt.label) +
-      '</button>';
-    });
-    html += '</div></div>';
-  });
-
-  html += '<button type="submit" class="btn btn-primary btn-full mt-16">Save weekly micro-marker check</button>' +
-  '</form>';
-
-  Drawer.open('Weekly review · Week ' + currentWk, html, function (panelEl) {
-    panelEl.querySelectorAll('.chip-group').forEach(function (cg) {
-      cg.querySelectorAll('.chip').forEach(function (c) {
-        c.addEventListener('click', function () {
-          cg.querySelectorAll('.chip').forEach(function (x) { x.classList.remove('selected'); });
-          c.classList.add('selected');
-        });
-      });
-    });
-
-    var form = panelEl.querySelector('#weekly-review-form');
-    if (form) {
-      form.addEventListener('submit', function (e) {
-        e.preventDefault();
-        profile.weeklyRatings = profile.weeklyRatings || [];
-        profile.weeklyRatings.push({
-          date: Utils.getToday(),
-          week: currentWk,
-          primary: 4,
-          secondary: 4
-        });
-        Storage.save(profile);
-        Drawer.close();
-        renderResultsSection(document.getElementById('results'));
-        renderTimelineSection(document.getElementById('timeline'));
-        UI.toast('Weekly review saved. Verdict updated.');
-      });
-    }
-  });
-}
 
 /* ---- Desktop Rail ---- */
 function renderDesktopRail() {
@@ -4136,21 +3427,19 @@ function renderSiteFooter() {
 
 /* ==================== ROOT RENDERING ==================== */
 function renderAllSections() {
-  UI.renderHeader();
-
   var contentEl = document.getElementById('app-content');
   if (!contentEl) return;
 
+  try { UI.renderHeader(); } catch (err) { if (window.console) console.error('Header failed', err); }
+
   var profile = Storage.load();
-  contentEl.innerHTML = '';
 
   var structureHtml = '<div id="desktop-rail" aria-label="Quick jump rail"></div>' +
     '<div class="sections-wrapper">';
 
-  // Requirement 3: When profile exists: Daily Ritual (#today) is the TOP section!
-  // Bathroom Shelf (#setup) is in the end portion!
+  // With a routine the daily ritual leads; the setup shelf moves to the end.
   var sectionOrder = profile
-    ? ['today', 'timeline', 'mind', 'results', 'setup', 'companion', 'how', 'nextstep', 'closing']
+    ? ['today', 'timeline', 'mind', 'results', 'nextstep', 'setup', 'companion', 'how', 'closing']
     : ['companion', 'how', 'setup', 'today', 'timeline', 'mind', 'results', 'nextstep', 'closing'];
 
   sectionOrder.forEach(function (secId) {
@@ -4161,11 +3450,11 @@ function renderAllSections() {
 
   structureHtml += '<div id="app-drawer" class="drawer-overlay" aria-hidden="true">' +
     '<div id="drawer-backdrop" class="drawer-backdrop"></div>' +
-    '<div id="drawer-panel" class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title">' +
+    '<div id="drawer-panel" class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title" tabindex="-1">' +
       '<div class="drawer-header">' +
         '<h2 class="drawer-title" id="drawer-title"></h2>' +
         '<button type="button" class="drawer-close-btn" id="drawer-close" aria-label="Close panel">' +
-          '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+          '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
         '</button>' +
       '</div>' +
       '<div class="drawer-body" id="drawer-body"></div>' +
@@ -4179,18 +3468,21 @@ function renderAllSections() {
   if (drawerClose) drawerClose.addEventListener('click', function () { Drawer.close(); });
   if (drawerBackdrop) drawerBackdrop.addEventListener('click', function () { Drawer.close(); });
 
-  // Render each section
+  // One failing section must never take the rest of the page down.
   SECTIONS.forEach(function (sec) {
     var secContainer = contentEl.querySelector('#' + sec.id);
-    if (secContainer && typeof sec.render === 'function') {
+    if (!secContainer || typeof sec.render !== 'function') return;
+    try {
       sec.render(secContainer);
+    } catch (err) {
+      if (window.console) console.error('Section "' + sec.id + '" failed to render', err);
+      secContainer.innerHTML = '<div class="container"><div class="card"><p class="card-text">This section could not load. Reload the page to try again.</p></div></div>';
     }
   });
 
-  renderDesktopRail();
-  renderSiteFooter();
-  initScrollspy();
-  
+  try { renderDesktopRail(); } catch (err) { if (window.console) console.error(err); }
+  try { renderSiteFooter(); } catch (err) { if (window.console) console.error(err); }
+  try { initScrollspy(); } catch (err) { if (window.console) console.error(err); }
 }
 
 /* ==================== CINEMATIC BRAND INTRO CONTROLLER ==================== */
@@ -4533,31 +3825,10 @@ function initIntroAnimation() {
       var enterBtn = beeStageEl.querySelector('#bee-enter-app');
       if (enterBtn) {
         enterBtn.addEventListener('click', function () {
-          var concern = beeState.concern || 'hair';
-          var cfg = Utils.getConcernConfig(concern);
-          var catalogList = (CONTENT.catalog && CONTENT.catalog[concern]) || [];
-          var ownedList = (beeState.ownedProducts || []).map(function (pid) {
-            var match = catalogList.find(function (c) { return c.id === pid; });
-            return match || { id: pid, name: 'Targeted formula', sizeDays: 30 };
-          });
-          if (!ownedList.length && catalogList.length) {
-            ownedList.push(catalogList[0]);
-          }
-
-          var startDate = Utils.getStartDateFromBucket(beeState.startBucket || 'notYet');
-          var profile = {
-            version: 3,
-            name: beeState.name || 'Friend',
-            concern: concern,
-            startDate: startDate,
-            startBucket: beeState.startBucket || 'notYet',
-            routineTime: beeState.routineTime || 'morning',
-            products: ownedList,
-            marker: (cfg.markers && cfg.markers[0]) || 'Observed change',
-            checkins: [],
-            flags: { seenExpect: true },
-            baseline: { primary: 3, secondary: 3, date: startDate }
-          };
+          var profile = buildProfile({
+            name: beeState.name, concern: beeState.concern, ownedProducts: beeState.ownedProducts,
+            startBucket: beeState.startBucket, routineTime: beeState.routineTime
+          }, null);
 
           Storage.save(profile);
           renderAllSections();
@@ -4664,12 +3935,6 @@ function initIntroAnimation() {
 
   if (skipBtn) {
     skipBtn.addEventListener('click', function () {
-      var prof = Storage.load();
-      if (!prof) {
-        prof = Utils.getDefaultProfile();
-        Storage.save(prof);
-      }
-      renderAllSections();
       dismissIntro();
     });
   }
@@ -4698,31 +3963,56 @@ function initIntroAnimation() {
 
 /* ==================== INIT ==================== */
 function init() {
-  renderAllSections();
-  initIntroAnimation();
-  initScrollspy();
+  // The intro overlay must be controllable even if rendering hits a problem.
+  try {
+    renderAllSections();
+  } catch (err) {
+    if (window.console) console.error('Render failed', err);
+  }
+  try {
+    initIntroAnimation();
+  } catch (err) {
+    if (window.console) console.error('Intro failed', err);
+    var stage = document.getElementById('intro-stage');
+    if (stage) stage.style.display = 'none';
+  }
+
+  // Delegated navigation: any [data-scroll] element outside the header works.
+  document.addEventListener('click', function (e) {
+    var el = e.target && e.target.closest ? e.target.closest('[data-scroll]') : null;
+    if (!el || el.closest('#app-header') || el.closest('#desktop-rail')) return;
+    var target = el.getAttribute('data-scroll');
+    if (!target) return;
+    e.preventDefault();
+    if (Drawer.isOpen()) Drawer.close();
+    scrollToSection(target);
+  });
+
+  document.addEventListener('keydown', function (e) { Drawer.onKeydown(e); });
+
+  var guideBtn = document.getElementById('guide-floating-btn');
+  if (guideBtn) guideBtn.addEventListener('click', function () { openChatbotDrawer(); });
+
+  Router.start();
 
   var currentRenderedDate = Utils.getToday();
   function checkMidnightRollover() {
     var nowToday = Utils.getToday();
-    if (nowToday !== currentRenderedDate) {
-      currentRenderedDate = nowToday;
-      var prof = Storage.load();
-      if (prof) {
-        var dayN = Utils.daysBetween(prof.startDate, currentRenderedDate) + 1;
-        UI.toast('New day. Day ' + dayN + '.');
-        renderCheckinSection(document.getElementById('today'));
-        renderTimelineSection(document.getElementById('timeline'));
-        renderMindSection(document.getElementById('mind'));
-        renderDesktopRail();
-      }
-    }
+    if (nowToday === currentRenderedDate) return;
+    currentRenderedDate = nowToday;
+    var prof = Storage.load();
+    if (!prof) return;
+    var dayN = Utils.daysBetween(prof.startDate, currentRenderedDate) + 1;
+    UI.toast('New day. Day ' + dayN + '.');
+    refreshSections(['today', 'timeline', 'mind', 'results', 'nextstep']);
+    refreshPrimaryCard();
   }
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'visible') checkMidnightRollover();
   });
   window.addEventListener('focus', checkMidnightRollover);
-  setInterval(checkMidnightRollover, 60000);
+  var rolloverTimer = setInterval(checkMidnightRollover, 60000);
+  if (rolloverTimer && typeof rolloverTimer.unref === 'function') rolloverTimer.unref();
 
   window.addEventListener('beforeinstallprompt', function (e) {
     e.preventDefault();
