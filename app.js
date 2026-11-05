@@ -829,6 +829,7 @@ var ICONS = {
 /* ==================== SECTION REGISTRY ==================== */
 var SECTIONS = [
   { id: 'companion', navLabel: 'Overview', title: 'Be Bodywise', render: renderHeroSection },
+  { id: 'bodymap', navLabel: 'Body map', title: 'Your body map', render: function (c) { if (window.BodyMap) window.BodyMap.renderSection(c); }, dashboard: true },
   { id: 'how', navLabel: '', title: 'How it works', render: renderHowSection },
   { id: 'setup', navLabel: 'Setup', title: 'Your plan', render: renderSetupSection },
   { id: 'today', navLabel: 'Daily Ritual', title: 'Daily ritual', render: renderCheckinSection, dashboard: true },
@@ -1004,7 +1005,7 @@ var _scrollSpyTicking = false;
 function initScrollspy() {
   function checkScroll() {
     _scrollSpyTicking = false;
-    var sections = ['today', 'timeline', 'mind', 'results', 'setup', 'companion', 'how', 'nextstep'];
+    var sections = ['bodymap', 'today', 'timeline', 'mind', 'results', 'setup', 'companion', 'how', 'nextstep'];
     var current = null;
     for (var i = 0; i < sections.length; i++) {
       var el = document.getElementById(sections[i]);
@@ -1036,7 +1037,7 @@ function onScrollSpyWindow() {
     var raf = (typeof window !== 'undefined' && window.requestAnimationFrame) || (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : function (cb) { return setTimeout(cb, 16); });
     raf(function () {
       _scrollSpyTicking = false;
-      var sections = ['today', 'timeline', 'mind', 'results', 'setup', 'companion', 'how', 'nextstep'];
+      var sections = ['bodymap', 'today', 'timeline', 'mind', 'results', 'setup', 'companion', 'how', 'nextstep'];
       var current = null;
       for (var i = 0; i < sections.length; i++) {
         var el = document.getElementById(sections[i]);
@@ -3378,6 +3379,7 @@ function renderDesktopRail() {
 
   // Requirement 4: Desktop Rail Navigation Order
   var steps = [
+    { id: 'bodymap', label: 'Body map', done: true },
     { id: 'today', label: 'Daily ritual', done: isCiDone },
     { id: 'timeline', label: 'Timeline', done: true },
     { id: 'mind', label: 'Mind Space', done: false },
@@ -3439,7 +3441,7 @@ function renderAllSections() {
 
   // With a routine the daily ritual leads; the setup shelf moves to the end.
   var sectionOrder = profile
-    ? ['today', 'timeline', 'mind', 'results', 'nextstep', 'setup', 'companion', 'how', 'closing']
+    ? ['bodymap', 'today', 'timeline', 'mind', 'results', 'nextstep', 'setup', 'companion', 'how', 'closing']
     : ['companion', 'how', 'setup', 'today', 'timeline', 'mind', 'results', 'nextstep', 'closing'];
 
   sectionOrder.forEach(function (secId) {
@@ -3834,7 +3836,12 @@ function initIntroAnimation() {
           renderAllSections();
 
           startGlide(function () {
-            scrollToSection('today');
+            if (window.BodyMap && window.BodyMap.play) {
+              // Zoom into the chosen region, then land on the daily check-in.
+              window.BodyMap.play(profile.concern);
+            } else {
+              scrollToSection('today');
+            }
             UI.toast('Welcome, ' + profile.name + '! Your routine is ready.');
           });
         });

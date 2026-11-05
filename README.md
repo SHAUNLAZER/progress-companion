@@ -6,6 +6,7 @@ A mobile-first, privacy-respecting client-side guided story companion for Be Bod
 
 ## Story Flow & Navigation
 
+- **Body map** (`#/bodymap`): The Bodywise logo figure as navigation. One pin per concern, with a ring showing 28-day consistency. Tapping a region zooms into it, fades to a clean screen, then opens the tracker. Falls back to a crossfade under `prefers-reduced-motion`.
 - **Journey** (`#/`): Three concentric rings (Check-in, Weekly review, Consistency), memory cards, story path, and priority card.
 - **Set up** (`#/start`): 9-tap guided onboarding across 3 chapters (About you, Your routine, Your expectations) with interactive expectation reveal and draft persistence.
 - **Timeline** (`#/expect`): Progress forecast weather strip, milestone timeline, and "Why does it take time?" explanation.

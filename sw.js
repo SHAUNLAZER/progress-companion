@@ -3,13 +3,14 @@
    Caches static assets for reliable offline daily tracking.
    ============================================================ */
 
-const CACHE_NAME = 'progress-companion-v14';
+const CACHE_NAME = 'progress-companion-v15';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './content.js',
+  './bodymap.js',
   './icon.svg',
   './manifest.webmanifest'
 ];
