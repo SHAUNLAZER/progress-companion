@@ -3800,7 +3800,7 @@ function initIntroAnimation() {
   };
 
   // Head finishes drawing at 7.7s; wait 1s more so the full logo is seen.
-  var INTRO_DONE_MS = 8700;
+  var INTRO_DONE_MS = 4200;
   var introTimer = null;
   var glideTimer = null;
   var landTimer = null;
@@ -3821,6 +3821,7 @@ function initIntroAnimation() {
     introEl.classList.remove('playing', 'fading');
     introEl.classList.add('dismissed');
     introEl.setAttribute('aria-hidden', 'true');
+    introEl.style.display = 'none';
     document.body.style.overflow = '';
   }
 
@@ -4255,6 +4256,18 @@ function initIntroAnimation() {
       renderBeeOnboarding();
     }, INTRO_DONE_MS);
   };
+
+  // Allow clicking anywhere on the intro screen to advance immediately into onboarding
+  introEl.addEventListener('click', function (e) {
+    if (beeStageEl && beeStageEl.style.display !== 'none') return;
+    clearTimers();
+    var prof = Storage.load();
+    if (!prof) {
+      renderBeeOnboarding();
+    } else {
+      dismissIntro();
+    }
+  });
 
   if (skipBtn) {
     skipBtn.addEventListener('click', function () {

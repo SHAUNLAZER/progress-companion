@@ -547,3 +547,33 @@ select { background: var(--ob-glass-hi) !important; }
 [style*="color:#0F2D5E"], [style*="color: #0F2D5E"] { color: #FFFFFF !important; }
 [style*="background:#EFF6FF"], [style*="background:#F0F7FF"], [style*="background:#EBF4FC"], [style*="background:#E6F2FC"] { background: var(--ob-tint) !important; }
 [style*="border:1px solid #BFDBFE"], [style*="border: 1px solid #BFDBFE"], [style*="border:1.5px solid #BFDBFE"] { border-color: var(--ob-hair) !important; }
+
+/* Intro Stage Dismissal Guard & Smooth Play */
+.intro-stage {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 10000 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: var(--ob-bg-0, #090A0F) !important;
+  color: #FF2A85 !important;
+  overflow: hidden !important;
+}
+
+:root[data-theme="light"] .intro-stage {
+  background: #FFF0F5 !important;
+  color: #7A0C43 !important;
+}
+
+:root[data-theme="light"] .intro-wordmark {
+  color: #7A0C43 !important;
+}
+
+.intro-stage.dismissed {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+}
+
