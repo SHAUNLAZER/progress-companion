@@ -16,13 +16,14 @@
 
   // One entry per concern: where its pin sits on the figure (x, y) and the
   // square window (cx, cy, size) the camera zooms into. Sizes are in figure units.
+  // label: [x, y, text-anchor] for the name drawn beside the pin.
   var REGIONS = [
-    { id: 'hair',     label: 'Hair',               pin: [318, 88],  zoom: [300, 96, 150] },
-    { id: 'skin',     label: 'Face',               pin: [235, 102], zoom: [235, 104, 64] },
-    { id: 'bodyskin', label: 'Body skin',          pin: [192, 168], zoom: [195, 175, 190] },
-    { id: 'pcos',     label: 'PCOS and hormones',  pin: [198, 262], zoom: [205, 264, 130] },
-    { id: 'period',   label: 'Period and hygiene', pin: [262, 298], zoom: [250, 292, 140] },
-    { id: 'wellness', label: 'General wellness',   pin: [262, 204], zoom: [225, 225, 330] }
+    { id: 'hair',     label: 'Hair',               pin: [234, 56],  zoom: [234, 80, 96],   tag: [214, 60, 'end'] },
+    { id: 'skin',     label: 'Face',               pin: [236, 104], zoom: [236, 104, 70],  tag: [256, 108, 'start'] },
+    { id: 'bodyskin', label: 'Body skin',          pin: [160, 140], zoom: [165, 142, 130], tag: [150, 172, 'middle'] },
+    { id: 'wellness', label: 'General wellness',   pin: [243, 207], zoom: [243, 207, 130], tag: [298, 211, 'start'] },
+    { id: 'pcos',     label: 'PCOS and hormones',  pin: [192, 252], zoom: [196, 256, 120], tag: [174, 256, 'end'] },
+    { id: 'period',   label: 'Period and hygiene', pin: [242, 292], zoom: [242, 292, 130], tag: [278, 296, 'start'] }
   ];
   var FULL_BOX = [0, 0, 447, 447];
 
@@ -55,7 +56,8 @@
   function getRegionState(profile, id) {
     var U = root.Utils;
     var out = { id: id, active: false, pct: 0, streak: 0, day: 0, week: 0, checkedIn: false };
-    if (!profile || profile.concern !== id || !U) return out;
+    var tracked = (profile && profile.concerns && profile.concerns.length) ? profile.concerns : (profile ? [profile.concern] : []);
+    if (!profile || tracked.indexOf(id) < 0 || !U) return out;
     var cons = U.getConsistency(profile.checkins || [], profile.startDate, profile.paused);
     out.active = true;
     out.pct = cons.pct;
@@ -85,7 +87,7 @@
     return getRegion(id).label;
   }
 
-  var RING_R = 15;
+  var RING_R = 12;
   var RING_C = 2 * Math.PI * RING_R;
 
   function pinHTML(region, st, interactive) {
@@ -97,13 +99,13 @@
         esc(labelFor(region.id)) + (st.active ? ', tracking, ' + Math.round(st.pct * 100) + ' percent consistent' : ', not tracking') + '"'
       : ' aria-hidden="true"';
     return '<g class="' + cls + '" transform="translate(' + x + ' ' + y + ')"' + attrs + '>' +
-      '<circle class="bm-pin-hit" r="26"/>' +
-      (st.active ? '<circle class="bm-pin-pulse" r="15"/>' : '') +
+      '<circle class="bm-pin-hit" r="20"/>' +
+      (st.active ? '<circle class="bm-pin-pulse" r="12"/>' : '') +
       '<circle class="bm-pin-track" r="' + RING_R + '"/>' +
       (st.active
         ? '<circle class="bm-pin-ring" r="' + RING_R + '" transform="rotate(-90)" stroke-dasharray="' + dash + ' ' + RING_C.toFixed(2) + '"/>'
         : '') +
-      '<circle class="bm-pin-dot" r="' + (st.active ? 6.5 : 4.5) + '"/>' +
+      '<circle class="bm-pin-dot" r="' + (st.active ? 5.5 : 4) + '"/>' +
     '</g>';
   }
 
@@ -111,7 +113,11 @@
     var pins = '';
     REGIONS.forEach(function (r) {
       if (onlyRegion && onlyRegion !== r.id) return;
-      pins += pinHTML(r, getRegionState(profile, r.id), interactive);
+      var st = getRegionState(profile, r.id);
+      pins += pinHTML(r, st, interactive);
+      if (interactive && r.tag) {
+        pins += '<text class="bm-tag' + (st.active ? ' is-active' : '') + '" x="' + r.tag[0] + '" y="' + r.tag[1] + '" text-anchor="' + r.tag[2] + '" aria-hidden="true">' + esc(labelFor(r.id)) + '</text>';
+      }
     });
     return '<svg class="' + cls + '" viewBox="' + FULL_BOX.join(' ') + '" xmlns="http://www.w3.org/2000/svg"' +
       (interactive ? ' role="group" aria-label="Body map"' : ' aria-hidden="true"') + '>' +
@@ -131,7 +137,7 @@
         '" data-region="' + r.id + '">' +
         '<span class="bm-legend-dot"></span>' +
         '<span class="bm-legend-label">' + esc(labelFor(r.id)) + '</span>' +
-        '<span class="bm-legend-meta">' + (st.active ? Math.round(st.pct * 100) + '% this month' : 'Not tracking') + '</span>' +
+        '<span class="bm-legend-meta">' + (st.active ? (st.pct > 0 ? Math.max(1, Math.round(st.pct * 100)) : 0) + '% this month' : 'Not tracking') + '</span>' +
       '</button></li>';
     });
 
@@ -171,7 +177,7 @@
     var cfg = (root.Utils && root.Utils.getConcernConfig) ? root.Utils.getConcernConfig(id) : {};
     var label = labelFor(id);
     if (st.active) {
-      var pct = Math.round(st.pct * 100);
+      var pct = st.pct > 0 ? Math.max(1, Math.round(st.pct * 100)) : 0;
       return '<div class="bm-clean-card" role="document">' +
         '<div class="bm-eyebrow">' + esc(label.toUpperCase()) + '</div>' +
         '<div class="bm-big-ring" aria-hidden="true">' +
@@ -197,7 +203,7 @@
         ? 'Changes here typically start showing around week ' + early + ' and settle by week ' + full + '.'
         : 'Set up a routine to start tracking this area.') + '</p>' +
       '<div class="bm-actions">' +
-        '<button type="button" class="btn btn-primary" data-bm-go="setup">Track ' + esc(label.toLowerCase()) + ' instead &rarr;</button>' +
+        '<button type="button" class="btn btn-primary" data-bm-go="setup" data-bm-concern="' + esc(id) + '">Track ' + esc(label.toLowerCase()) + ' too &rarr;</button>' +
         '<button type="button" class="btn btn-secondary" data-bm-back>Back to body</button>' +
       '</div></div>';
   }
@@ -292,8 +298,10 @@
       var go = t.closest('[data-bm-go]');
       if (go) {
         var target = go.getAttribute('data-bm-go');
+        var trackId = go.getAttribute('data-bm-concern');
         close(function () {
-          if (typeof root.scrollToSection === 'function') root.scrollToSection(target);
+          if (target === 'setup' && trackId && typeof root.openShelfSetupFor === 'function') root.openShelfSetupFor(trackId);
+          else if (typeof root.scrollToSection === 'function') root.scrollToSection(target);
           if (typeof opts.onDone === 'function') opts.onDone(target);
         });
         return;

@@ -152,11 +152,20 @@ var Utils = {
     for (var i = 0; i < totalDays; i++) {
       var d = this.addDays(today, -i);
       var c = byDate[d];
-      if (c && c.done) done++;
-      else if ((c && c.rest) || this.isDateInPause(paused, d)) rest++;
+      if (c && c.done) {
+        var p = (typeof c.pct === 'number' && c.pct > 0) ? (c.pct / 100) : 1;
+        done += p;
+      } else if (c && c.ritualDone && c.ritualDone.length) {
+        var p = (typeof c.pct === 'number' && c.pct > 0) ? (c.pct / 100) : (c.ritualDone.length / 4);
+        done += p;
+      } else if ((c && c.rest) || this.isDateInPause(paused, d)) {
+        rest++;
+      }
     }
     var denom = Math.max(1, totalDays - rest);
-    return { done: done, total: denom, rest: rest, pct: Math.min(1, done / denom) };
+    var rawPct = done / denom;
+    var finalPct = (done > 0) ? Math.max(0.01, Math.min(1, rawPct)) : 0;
+    return { done: done, total: denom, rest: rest, pct: finalPct };
   },
 
   getStreak: function (checkins, paused) {
@@ -689,12 +698,79 @@ var startState = {
   answers: {
     name: '',
     concern: null,
+    concerns: [],
     ownedProducts: [],
     startBucket: 'notYet',
     routineTime: 'morning'
   },
-  editing: false
+  editing: false,
+  shelfQueue: [],
+  shelfIdx: 0
 };
+
+// All concerns a profile tracks (older profiles only stored one).
+function getProfileConcerns(profile) {
+  if (!profile) return [];
+  var list = (profile.concerns && profile.concerns.length) ? profile.concerns.slice() : [];
+  if (profile.concern && list.indexOf(profile.concern) < 0) list.unshift(profile.concern);
+  return list;
+}
+
+// Every checklist step for all concerns the person chose. Ids are prefixed
+// with the concern so steps with the same name never collide.
+function getRitualSteps(profile) {
+  var templates = CONTENT.ritualTemplates || {};
+  var rTime = (profile && profile.routineTime) || 'morning';
+  var concerns = getProfileConcerns(profile);
+  if (!concerns.length) concerns = ['wellness'];
+  var steps = [];
+  concerns.forEach(function (c) {
+    var tpl = templates[c] || templates.wellness || {};
+    if (rTime === 'morning' || rTime === 'both') (tpl.am || []).forEach(function (s) { steps.push({ id: c + ':' + s.id, text: s.text, slot: 'AM', concern: c }); });
+    if (rTime === 'night' || rTime === 'both') (tpl.pm || []).forEach(function (s) { steps.push({ id: c + ':' + s.id, text: s.text, slot: 'PM', concern: c }); });
+  });
+  return steps;
+}
+
+// Percent of the day logged (0 when not submitted). Older full check-ins count as 100.
+function getDayPct(ci) {
+  if (!ci) return 0;
+  if (typeof ci.pct === 'number' && ci.pct > 0) return ci.pct;
+  if (ci.ritualDone && ci.ritualDone.length) {
+    var total = window.__ritualTotalSteps || 4;
+    return Math.min(100, Math.round((ci.ritualDone.length / total) * 100));
+  }
+  return ci.done ? 100 : 0;
+}
+
+// Open the bathroom shelf for one concern directly (no name / focus questions).
+function openShelfSetupFor(concernId) {
+  var profile = Storage.load();
+  if (!profile) { scrollToSection('setup'); return; }
+  prefillStartState(profile);
+  var ans = startState.answers;
+  if (concernId && ans.concerns.indexOf(concernId) < 0) ans.concerns.push(concernId);
+  startState.forkChoice = 'owned';
+  startState.shelfQueue = [concernId || ans.concerns[0]];
+  startState.shelfIdx = 0;
+  startState.step = 2;
+  var el = document.getElementById('setup');
+  if (el) renderSetupSection(el);
+  scrollToSection('setup');
+}
+window.openShelfSetupFor = openShelfSetupFor;
+
+// Land on the Bodywise logo (body map) and zoom straight into a region.
+function enterBodyMap(concernId) {
+  scrollToSection('bodymap');
+  if (!window.BodyMap || !window.BodyMap.play) return;
+  setTimeout(function () {
+    var sec = document.getElementById('bodymap');
+    var svg = sec ? sec.querySelector('.bm-svg') : null;
+    window.BodyMap.play(concernId, { sourceSvg: svg });
+  }, 650);
+}
+window.enterBodyMap = enterBodyMap;
 
 // Older versions stored a setup draft under this key.
 function clearDraft() {
@@ -705,6 +781,7 @@ function prefillStartState(profile) {
   if (!profile) return;
   startState.answers.name = profile.name || '';
   startState.answers.concern = profile.concern || null;
+  startState.answers.concerns = getProfileConcerns(profile);
   startState.answers.ownedProducts = (profile.products || []).map(function (p) { return p.id; });
   startState.answers.startBucket = profile.startBucket || 'notYet';
   startState.answers.routineTime = profile.routineTime || 'morning';
@@ -713,17 +790,23 @@ function prefillStartState(profile) {
 
 // Builds a profile from setup answers. When editing, progress data is kept.
 function buildProfile(ans, existing) {
-  var concern = ans.concern || 'hair';
+  var concerns = (ans.concerns && ans.concerns.length) ? ans.concerns.slice() : [ans.concern || 'hair'];
+  var concern = concerns[0];
   var cfg = Utils.getConcernConfig(concern);
-  var catalogList = (CONTENT.catalog && CONTENT.catalog[concern]) || [];
-  var prevProducts = (existing && existing.concern === concern) ? (existing.products || []) : [];
+  var prevProducts = existing ? (existing.products || []) : [];
   var owned = [];
-  (ans.ownedProducts || []).forEach(function (pid) {
-    var prev = prevProducts.find(function (p) { return p.id === pid; });
-    var match = prev || catalogList.find(function (c) { return c.id === pid; });
-    if (match) owned.push(match);
+  concerns.forEach(function (c) {
+    var catalogList = (CONTENT.catalog && CONTENT.catalog[c]) || [];
+    var forThis = [];
+    (ans.ownedProducts || []).forEach(function (pid) {
+      var inCat = catalogList.find(function (x) { return x.id === pid; });
+      if (!inCat) return;
+      var prev = prevProducts.find(function (p) { return p.id === pid; });
+      forThis.push(prev || inCat);
+    });
+    if (!forThis.length && catalogList.length) forThis.push(catalogList[0]);
+    owned = owned.concat(forThis);
   });
-  if (!owned.length && catalogList.length) owned.push(catalogList[0]);
 
   var bucket = ans.startBucket || 'notYet';
   var keepStart = existing && existing.startBucket === bucket && existing.startDate;
@@ -734,6 +817,7 @@ function buildProfile(ans, existing) {
     version: 3,
     name: Utils.toTitleCase(ans.name) || 'Friend',
     concern: concern,
+    concerns: concerns,
     startDate: startDate,
     startBucket: bucket,
     routineTime: ans.routineTime || 'morning',
@@ -775,18 +859,19 @@ function renderDotGrid(profile) {
   for (var d = 0; d < 7; d++) {
     var date = Utils.addDays(weekStart, d);
     var ci = Utils.getCheckinForDate(profile, date);
-    var done = ci && ci.done;
+    var pctD = getDayPct(ci);
+    var done = !!(ci && (ci.done || pctD > 0 || (ci.ritualDone && ci.ritualDone.length > 0)));
     var isToday = date === today;
     var daysSinceDate = Utils.daysBetween(date, today);
     var editable = daysSinceDate >= 0 && daysSinceDate <= 3 && date >= profile.startDate;
     var isFuture = date > today;
     var cls = 'dot';
-    if (done) cls += ' done';
+    if (done) cls += pctD < 100 ? ' partial' : ' done';
     if (isToday) cls += ' today';
     if (editable && !isFuture) cls += ' editable';
-    html += '<div class="' + cls + '"' +
-      (editable && !isFuture ? ' data-date="' + date + '" tabindex="0" role="button" aria-label="' + dayLabels[d] + ' ' + Utils.formatDate(date) + (done ? ' done' : ' not done') + '"' : '') +
-      ' title="' + dayLabels[d] + '">' + dayLabels[d] + '</div>';
+    html += '<div class="' + cls + '"' + (done ? ' style="--pct:' + pctD + '%"' : '') +
+      (editable && !isFuture ? ' data-date="' + date + '" tabindex="0" role="button" aria-label="' + dayLabels[d] + ' ' + Utils.formatDate(date) + (done ? ' ' + pctD + ' percent done' : ' not done') + '"' : '') +
+      ' title="' + dayLabels[d] + (done ? ' · ' + pctD + '%' : '') + '">' + dayLabels[d] + '</div>';
   }
   html += '</div>';
 
@@ -801,13 +886,14 @@ function renderDotGrid(profile) {
         html += '<div class="dot" style="opacity:0.3;" title="' + dayLabels[dd] + '"></div>';
       } else {
         var ci2 = Utils.getCheckinForDate(profile, dt);
-        var dn = ci2 && ci2.done;
+        var p2 = getDayPct(ci2);
+        var dn = !!(ci2 && (ci2.done || p2 > 0 || (ci2.ritualDone && ci2.ritualDone.length > 0)));
         var daysBack = Utils.daysBetween(dt, today);
         var isBackfillable = daysBack >= 0 && daysBack <= 3;
-        var dotCls = 'dot' + (dn ? ' done' : '') + (isBackfillable ? ' editable' : '');
-        html += '<div class="' + dotCls + '"' +
+        var dotCls = 'dot' + (dn ? (p2 < 100 ? ' partial' : ' done') : '') + (isBackfillable ? ' editable' : '');
+        html += '<div class="' + dotCls + '"' + (dn ? ' style="--pct:' + p2 + '%"' : '') +
           (isBackfillable ? ' data-date="' + dt + '" tabindex="0" role="button" aria-label="' + dayLabels[dd] + ' ' + Utils.formatDate(dt) + (dn ? ' done' : ' not done') + '"' : '') +
-          ' title="' + dayLabels[dd] + ' ' + Utils.formatDate(dt) + '"></div>';
+          ' title="' + dayLabels[dd] + ' ' + Utils.formatDate(dt) + (dn ? ' · ' + p2 + '%' : '') + '"></div>';
       }
     }
     html += '</div>';
@@ -945,8 +1031,8 @@ function updateActiveNav(id) {
     if (target === id) {
       btn.classList.add('active');
       if (node) {
-        node.style.background = '#0B5E9E';
-        node.style.borderColor = '#0B5E9E';
+        node.style.background = '#FF2A85';
+        node.style.borderColor = '#FF2A85';
         node.style.transform = 'scale(1.25)';
       }
     } else {
@@ -1110,15 +1196,15 @@ function renderHeroSection(container) {
         '<p class="hero-subline">' + escHTML(c.subline || 'See real change, even when it is slow.') + '</p>' +
         '<div class="hero-benefits-grid">' +
           '<div class="benefit-pill">' +
-            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0B5E9E" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF2A85" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' +
             '<span>' + escHTML(c.benefits[0]) + '</span>' +
           '</div>' +
           '<div class="benefit-pill">' +
-            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0B5E9E" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF2A85" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' +
             '<span>' + escHTML(c.benefits[1]) + '</span>' +
           '</div>' +
           '<div class="benefit-pill">' +
-            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0B5E9E" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF2A85" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' +
             '<span>' + escHTML(c.benefits[2]) + '</span>' +
           '</div>' +
         '</div>' +
@@ -1146,14 +1232,14 @@ function renderHeroSection(container) {
               '<svg class="journey-svg" viewBox="0 0 380 140" fill="none">' +
                 '<defs>' +
                   '<linearGradient id="heroCurveGrad" x1="0" y1="0" x2="0" y2="1">' +
-                    '<stop offset="0%" stop-color="#0B5E9E" stop-opacity="0.2"/>' +
-                    '<stop offset="100%" stop-color="#0B5E9E" stop-opacity="0.0"/>' +
+                    '<stop offset="0%" stop-color="#FF2A85" stop-opacity="0.2"/>' +
+                    '<stop offset="100%" stop-color="#FF2A85" stop-opacity="0.0"/>' +
                   '</linearGradient>' +
                 '</defs>' +
                 '<path d="M 20 110 C 100 105, 180 85, 260 55 C 300 40, 340 35, 360 30 L 360 135 L 20 135 Z" fill="url(#heroCurveGrad)"/>' +
-                '<path class="signature-line" d="M 20 110 C 100 105, 180 85, 260 55 C 300 40, 340 35, 360 30" stroke="#0B5E9E" stroke-width="4.5" stroke-linecap="round"/>' +
-                '<circle class="milestone-dot graph-interactive-dot active" data-node="1" cx="20" cy="110" r="7" fill="#0B5E9E"/>' +
-                '<circle class="milestone-dot graph-interactive-dot" data-node="4" cx="180" cy="85" r="7" fill="#0284c7"/>' +
+                '<path class="signature-line" d="M 20 110 C 100 105, 180 85, 260 55 C 300 40, 340 35, 360 30" stroke="#FF2A85" stroke-width="4.5" stroke-linecap="round"/>' +
+                '<circle class="milestone-dot graph-interactive-dot active" data-node="1" cx="20" cy="110" r="7" fill="#FF2A85"/>' +
+                '<circle class="milestone-dot graph-interactive-dot" data-node="4" cx="180" cy="85" r="7" fill="#FF2A85"/>' +
                 '<circle class="milestone-dot graph-interactive-dot" data-node="12" cx="360" cy="30" r="8" fill="#F26B1D"/>' +
               '</svg>' +
               '<div class="journey-milestones-grid">' +
@@ -1252,28 +1338,28 @@ function renderHowSection(container) {
     var svgVisual = '';
     if (idx === 0) {
       svgVisual = '<svg width="64" height="64" viewBox="0 0 80 80" fill="none" style="margin-bottom:14px;">' +
-        '<circle cx="40" cy="40" r="34" stroke="#E6F2FC" stroke-width="6"/>' +
-        '<path d="M 18 52 C 28 50, 42 38, 62 24" stroke="#0B5E9E" stroke-width="4" stroke-linecap="round"/>' +
+        '<circle cx="40" cy="40" r="34" stroke="var(--ob-hair, rgba(255,42,133,0.2))" stroke-width="6"/>' +
+        '<path d="M 18 52 C 28 50, 42 38, 62 24" stroke="#FF2A85" stroke-width="4" stroke-linecap="round"/>' +
         '<circle cx="62" cy="24" r="6" fill="#F26B1D"/>' +
         '</svg>';
     } else if (idx === 1) {
       svgVisual = '<svg width="64" height="64" viewBox="0 0 80 80" fill="none" style="margin-bottom:14px;">' +
-        '<circle cx="40" cy="40" r="32" stroke="#1c4ed8" stroke-width="5" stroke-linecap="round" stroke-dasharray="160" stroke-dashoffset="30"/>' +
-        '<circle cx="40" cy="40" r="22" stroke="#0284c7" stroke-width="5" stroke-linecap="round" stroke-dasharray="110" stroke-dashoffset="20"/>' +
-        '<circle cx="40" cy="40" r="12" stroke="#0d9488" stroke-width="5" stroke-linecap="round" stroke-dasharray="60" stroke-dashoffset="0"/>' +
+        '<circle cx="40" cy="40" r="32" stroke="#FF2A85" stroke-width="5" stroke-linecap="round" stroke-dasharray="160" stroke-dashoffset="30"/>' +
+        '<circle cx="40" cy="40" r="22" stroke="#FF6BA6" stroke-width="5" stroke-linecap="round" stroke-dasharray="110" stroke-dashoffset="20"/>' +
+        '<circle cx="40" cy="40" r="12" stroke="#F26B1D" stroke-width="5" stroke-linecap="round" stroke-dasharray="60" stroke-dashoffset="0"/>' +
         '</svg>';
     } else {
       svgVisual = '<svg width="64" height="64" viewBox="0 0 80 80" fill="none" style="margin-bottom:14px;">' +
-        '<rect x="10" y="16" width="60" height="48" rx="8" fill="#F0F6FC"/>' +
-        '<path d="M 14 54 C 28 50, 44 36, 66 26 L 66 38 C 44 48, 28 58, 14 60 Z" fill="#E6F2FC"/>' +
-        '<path d="M 14 56 C 28 52, 44 38, 66 28" stroke="#0B5E9E" stroke-width="3.5" stroke-linecap="round"/>' +
+        '<rect x="10" y="16" width="60" height="48" rx="8" fill="var(--ob-glass-hi, #FFF0F5)"/>' +
+        '<path d="M 14 54 C 28 50, 44 36, 66 26 L 66 38 C 44 48, 28 58, 14 60 Z" fill="var(--ob-hair, rgba(255,42,133,0.2))"/>' +
+        '<path d="M 14 56 C 28 52, 44 38, 66 28" stroke="#FF2A85" stroke-width="3.5" stroke-linecap="round"/>' +
         '<circle cx="44" cy="38" r="4" fill="#F26B1D"/>' +
         '</svg>';
     }
 
     html += '<div class="how-panel" data-panel="' + idx + '">' +
       svgVisual +
-      '<div class="badge badge-blue mb-8">Step ' + escHTML(p.step) + '</div>' +
+      '<div class="badge badge-pink mb-8">Step ' + escHTML(p.step) + '</div>' +
       '<h3 class="card-title" style="font-size:1.25rem;margin-bottom:8px;">' + escHTML(p.title) + '</h3>' +
       '<p class="card-text" style="font-size:0.95rem;margin-bottom:10px;">' + escHTML(p.text) + '</p>' +
       '<p class="muted" style="font-size:0.84rem;">' + escHTML(p.detail) + '</p>' +
@@ -1296,9 +1382,9 @@ function renderSetupSection(container) {
     var html = '<div class="container">' +
       '<div class="section-header text-center">' +
         '<h2 class="section-title">Bathroom Shelf</h2>' +
-        '<p class="section-subline">' + escHTML(concernCfg.label) + ' routine · ' + pCount + ' active formula' + (pCount === 1 ? '' : 's') + '</p>' +
-        '<p class="official-shelf-sublink" style="font-size:0.88rem;color:#0B5E9E;margin-top:6px;">' +
-          'Need to refill or explore actives? <a href="https://bebodywise.com" target="_blank" rel="noopener" class="store-link-accent" style="color:#0B5E9E;font-weight:600;text-decoration:underline;">View full ingredients on Be Bodywise ↗</a>' +
+        '<p class="section-subline">' + escHTML(getProfileConcerns(profile).map(function (c) { return Utils.getConcernConfig(c).label; }).join(' + ')) + ' routine · ' + pCount + ' active formula' + (pCount === 1 ? '' : 's') + '</p>' +
+        '<p class="official-shelf-sublink" style="font-size:0.88rem;color:#FF2A85;margin-top:6px;">' +
+          'Need to refill or explore actives? <a href="https://bebodywise.com" target="_blank" rel="noopener" class="store-link-accent" style="color:#FF2A85;font-weight:600;text-decoration:underline;">View full ingredients on Be Bodywise ↗</a>' +
         '</p>' +
       '</div>' +
 
@@ -1306,7 +1392,7 @@ function renderSetupSection(container) {
         '<div class="shelf-active-list" style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px;">' +
           (profile.products || []).map(function (p) {
             return '<div class="shelf-active-item" style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;">' +
-              '<div class="shelf-item-icon" style="width:36px;height:36px;border-radius:8px;background:#EBF4FC;display:flex;align-items:center;justify-content:center;color:#0B5E9E;flex-shrink:0;">' +
+              '<div class="shelf-item-icon" style="width:36px;height:36px;border-radius:8px;background:var(--ob-tint, rgba(255,42,133,0.15));display:flex;align-items:center;justify-content:center;color:#FF2A85;flex-shrink:0;">' +
                 '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' +
               '</div>' +
               '<div class="shelf-item-details" style="flex:1;">' +
@@ -1333,7 +1419,7 @@ function renderSetupSection(container) {
       editPlanBtn.addEventListener('click', function () {
         prefillStartState(profile);
         startState.forkChoice = 'owned';
-        startState.step = 0;
+        startState.step = 1;
         renderSetupSection(container);
       });
     }
@@ -1422,7 +1508,7 @@ function renderDiscoveryCatalog(container) {
 
   discList.forEach(function (item) {
     html += '<div class="discovery-card">' +
-      '<div class="badge badge-blue mb-8">' + escHTML(item.concern) + '</div>' +
+      '<div class="badge badge-pink mb-8">' + escHTML(item.concern) + '</div>' +
       '<h3 class="card-title" style="font-size:1.15rem;margin-bottom:6px;">' + escHTML(item.product) + '</h3>' +
       '<p class="card-text mb-16" style="font-size:0.88rem;color:var(--text-secondary);">' + escHTML(item.benefit) + '</p>' +
       '<a href="' + escHTML(item.url) + '" target="_blank" rel="noopener" class="outbound-link-btn">' +
@@ -1432,7 +1518,7 @@ function renderDiscoveryCatalog(container) {
   });
 
   html += '</div>' +
-      '<div class="card text-center" style="padding:24px;background:#F0F7FF;border:1.5px solid #BFDBFE;">' +
+      '<div class="card text-center" style="padding:24px;background:var(--ob-tint, rgba(255,42,133,0.12));border:1.5px solid rgba(255,42,133,0.3);">' +
         '<h4 style="font-size:1.05rem;font-weight:700;color:var(--deep-navy);margin-bottom:6px;">Already placed an order?</h4>' +
         '<p class="card-text mb-14" style="font-size:0.9rem;">If your product is on the way, you can build your bathroom shelf now.</p>' +
         '<div style="display:flex;gap:12px;justify-content:center;">' +
@@ -1467,7 +1553,10 @@ function renderDiscoveryCatalog(container) {
 function renderBathroomShelfSetup(container) {
   var ans = startState.answers;
   ans.ownedProducts = ans.ownedProducts || [];
+  ans.concerns = ans.concerns || (ans.concern ? [ans.concern] : []);
   var step = startState.step || 0;
+  // Updating an existing plan never asks for the name again.
+  if (step === 0 && startState.editing) { step = 1; startState.step = 1; }
   var speech = CONTENT.guide.setupSpeech;
 
   // Step 0: Name
@@ -1519,12 +1608,12 @@ function renderBathroomShelfSetup(container) {
             '<div class="guide-speech-text">' + escHTML(speech.step2) + '</div>' +
           '</div>' +
         '</div>' +
-        '<h2 class="section-title mb-4">Choose your focus area</h2>' +
-        '<p class="muted mb-16" style="font-size:0.86rem;">We tailor your routine steps to this concern.</p>' +
-        '<div class="chip-group" role="radiogroup">';
+        '<h2 class="section-title mb-4">' + (startState.editing ? 'Choose the focus area' : 'Choose your focus area') + '</h2>' +
+        '<p class="muted mb-16" style="font-size:0.86rem;">Pick one or more. We tailor your routine steps to each.</p>' +
+        '<div class="chip-group" role="group">';
 
     CONTENT.quiz.concerns.forEach(function (opt) {
-      var sel = (ans.concern === opt.value);
+      var sel = ans.concerns.indexOf(opt.value) >= 0;
       html += '<button type="button" class="chip' + (sel ? ' selected focus-ring-active' : '') + '" data-concern="' + opt.value + '">' +
         escHTML(opt.label) +
       '</button>';
@@ -1533,7 +1622,7 @@ function renderBathroomShelfSetup(container) {
     html += '</div>' +
         '<div style="display:flex;justify-content:space-between;margin-top:24px;">' +
           '<button type="button" class="btn btn-secondary" id="shelf-back-concern">Back</button>' +
-          '<button type="button" class="btn btn-primary" id="shelf-next-concern"' + (ans.concern ? '' : ' disabled') + '>Next step \u2192</button>' +
+          '<button type="button" class="btn btn-primary" id="shelf-next-concern"' + (ans.concerns.length ? '' : ' disabled') + '>Next step \u2192</button>' +
         '</div>' +
       '</div></div>';
 
@@ -1541,21 +1630,32 @@ function renderBathroomShelfSetup(container) {
 
     container.querySelectorAll('[data-concern]').forEach(function (chip) {
       chip.addEventListener('click', function () {
-        ans.concern = this.getAttribute('data-concern');
-        ans.ownedProducts = [];
-        container.querySelectorAll('[data-concern]').forEach(function (c) { c.classList.remove('selected', 'focus-ring-active'); });
-        this.classList.add('selected', 'focus-ring-active');
-        document.getElementById('shelf-next-concern').disabled = false;
+        var v = this.getAttribute('data-concern');
+        var i = ans.concerns.indexOf(v);
+        if (i >= 0) ans.concerns.splice(i, 1); else ans.concerns.push(v);
+        ans.concern = ans.concerns[0] || null;
+        this.classList.toggle('selected', i < 0);
+        this.classList.toggle('focus-ring-active', i < 0);
+        document.getElementById('shelf-next-concern').disabled = !ans.concerns.length;
       });
     });
 
     document.getElementById('shelf-back-concern').addEventListener('click', function () {
+      if (startState.editing) {
+        // Cancel the update and return to the saved shelf.
+        startState.editing = false;
+        startState.step = 0;
+        renderSetupSection(container);
+        return;
+      }
       startState.step = 0;
       renderBathroomShelfSetup(container);
     });
 
     document.getElementById('shelf-next-concern').addEventListener('click', function () {
-      if (ans.concern) {
+      if (ans.concerns.length) {
+        startState.shelfQueue = ans.concerns.slice();
+        startState.shelfIdx = 0;
         startState.step = 2;
         renderBathroomShelfSetup(container);
       }
@@ -1565,7 +1665,12 @@ function renderBathroomShelfSetup(container) {
 
   // Step 2: Check off Owned Products
   if (step === 2) {
-    var catalog = CONTENT.catalog[ans.concern] || [];
+    var queue = (startState.shelfQueue && startState.shelfQueue.length) ? startState.shelfQueue : ans.concerns;
+    var qIdx = Math.min(startState.shelfIdx || 0, queue.length - 1);
+    var shelfConcern = queue[qIdx];
+    var catalog = CONTENT.catalog[shelfConcern] || [];
+    var hasForThis = catalog.some(function (p) { return ans.ownedProducts.indexOf(p.id) >= 0; });
+    var shelfLabel = Utils.getConcernConfig(shelfConcern).label || shelfConcern;
     var html = '<div class="container">' +
       '<div class="card" style="max-width:640px;margin:0 auto;padding:32px 24px;">' +
         '<div class="guide-speech-card">' +
@@ -1575,8 +1680,8 @@ function renderBathroomShelfSetup(container) {
             '<div class="guide-speech-text">' + escHTML(speech.step3) + '</div>' +
           '</div>' +
         '</div>' +
-        '<h2 class="section-title mb-4">Your bathroom shelf</h2>' +
-        '<p class="muted mb-16" style="font-size:0.86rem;">Select every formula you currently have with you.</p>' +
+        '<h2 class="section-title mb-4">Your bathroom shelf' + (queue.length > 1 ? ' \u00b7 ' + escHTML(shelfLabel) + ' (' + (qIdx + 1) + ' of ' + queue.length + ')' : ' \u00b7 ' + escHTML(shelfLabel)) + '</h2>' +
+        '<p class="muted mb-16" style="font-size:0.86rem;">Select every ' + escHTML(String(shelfLabel).toLowerCase()) + ' formula you currently have with you.</p>' +
         '<div class="shelf-products-grid">';
 
     catalog.forEach(function (p) {
@@ -1590,7 +1695,7 @@ function renderBathroomShelfSetup(container) {
     html += '</div>' +
         '<div style="display:flex;justify-content:space-between;margin-top:24px;">' +
           '<button type="button" class="btn btn-secondary" id="shelf-back-concern">Back</button>' +
-          '<button type="button" class="btn btn-primary" id="shelf-next-products"' + (ans.ownedProducts.length ? '' : ' disabled') + '>Next step \u2192</button>' +
+          '<button type="button" class="btn btn-primary" id="shelf-next-products"' + (hasForThis ? '' : ' disabled') + '>Next step \u2192</button>' +
         '</div>' +
       '</div></div>';
 
@@ -1610,15 +1715,16 @@ function renderBathroomShelfSetup(container) {
     });
 
     document.getElementById('shelf-back-concern').addEventListener('click', function () {
-      startState.step = 1;
+      if (qIdx > 0) { startState.shelfIdx = qIdx - 1; }
+      else { startState.step = 1; }
       renderBathroomShelfSetup(container);
     });
 
     document.getElementById('shelf-next-products').addEventListener('click', function () {
-      if (ans.ownedProducts.length) {
-        startState.step = 3;
-        renderBathroomShelfSetup(container);
-      }
+      if (!hasForThis) return;
+      if (qIdx < queue.length - 1) { startState.shelfIdx = qIdx + 1; }
+      else { startState.step = 3; }
+      renderBathroomShelfSetup(container);
     });
     return;
   }
@@ -1659,6 +1765,8 @@ function renderBathroomShelfSetup(container) {
 
     document.getElementById('shelf-back-products').addEventListener('click', function () {
       startState.step = 2;
+      var q = (startState.shelfQueue && startState.shelfQueue.length) ? startState.shelfQueue : ans.concerns;
+      startState.shelfIdx = Math.max(0, q.length - 1);
       renderBathroomShelfSetup(container);
     });
 
@@ -1695,9 +1803,11 @@ function renderBathroomShelfSetup(container) {
       }
 
       // Complete all section DOM updates, smoothly transition to #today
+      var landOn = (startState.shelfQueue && startState.shelfQueue.length)
+        ? startState.shelfQueue[startState.shelfQueue.length - 1] : profile.concern;
       setTimeout(function () {
         renderAllSections();
-        scrollToSection('today');
+        enterBodyMap(landOn);
 
         var floatBtn = document.getElementById('guide-floating-btn');
         if (floatBtn) {
@@ -1755,20 +1865,17 @@ function renderCheckinSection(container) {
     streak: Math.max(1, streak)
   });
 
-  var mindset = Utils.getDailyMindsetQuote(today);
-  var templates = CONTENT.ritualTemplates || {};
-  var template = templates[profile.concern] || templates.wellness;
-  var rTime = profile.routineTime || 'morning';
-
-  var steps = [];
-  if (rTime === 'morning' || rTime === 'both') {
-    (template.am || []).forEach(function (s) { steps.push({ id: s.id, text: s.text, slot: 'AM' }); });
-  }
-  if (rTime === 'night' || rTime === 'both') {
-    (template.pm || []).forEach(function (s) { steps.push({ id: s.id, text: s.text, slot: 'PM' }); });
-  }
+  var steps = getRitualSteps(profile);
+  var concerns = getProfileConcerns(profile);
+  if (!concerns.length) concerns = ['wellness'];
+  var activeTab = concerns.indexOf(window.__ritualTab) >= 0 ? window.__ritualTab : concerns[0];
   var allStepIds = steps.map(function (s) { return s.id; });
+  window.__ritualTotalSteps = allStepIds.length;
   var doneCount = allStepIds.filter(function (id) { return ritualDone.indexOf(id) >= 0; }).length;
+  var dayPct = allStepIds.length ? Math.round(doneCount / allStepIds.length * 100) : 0;
+  var isSubmitted = !!checkinToday.done;
+  var isLocked = isSubmitted && !checkinToday.editing;
+  var savedPct = getDayPct(checkinToday);
   var canRest = Utils.canTakeRestDay(profile.checkins);
 
   var html = '<div class="container">' +
@@ -1794,48 +1901,63 @@ function renderCheckinSection(container) {
       '</div>' +
     '</div>' +
 
-    '<div class="mindset-card mb-24" id="daily-mindset-card" role="button" tabindex="0" title="Show another reassurance" style="cursor:pointer;">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
-        '<div class="mindset-badge">Daily mindset</div>' +
-        '<span class="mindset-card-shuffle-hint">Tap to shuffle</span>' +
-      '</div>' +
-      '<div class="mindset-quote" id="mindset-quote-text" style="transition:opacity 0.2s ease;">' + escHTML(mindset.quote) + '</div>' +
-      '<div class="mindset-author" id="mindset-author-text" style="transition:opacity 0.2s ease;">' + escHTML(mindset.author) + '</div>' +
-    '</div>' +
 
     '<div class="checkin-grid">' +
       '<div class="checkin-left-col">' +
         '<div class="card ritual-checklist-card">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
-            '<h3 class="card-title" style="margin-bottom:0;">Today\'s formula checklist</h3>' +
-            '<span class="badge badge-blue">' + doneCount + '/' + allStepIds.length + ' done</span>' +
+            '<h3 class="card-title" style="margin-bottom:0;">Your choice</h3>' +
+            '<span class="badge badge-pink">' + doneCount + '/' + allStepIds.length + ' done</span>' +
           '</div>' +
+          '<div class="choice-tabs" role="tablist" aria-label="Your chosen areas">';
+  concerns.forEach(function (c) {
+    var cSteps = steps.filter(function (st) { return st.concern === c; });
+    var cDone = cSteps.filter(function (st) { return ritualDone.indexOf(st.id) >= 0; }).length;
+    html += '<button type="button" role="tab" class="choice-tab' + (c === activeTab ? ' is-active' : '') + '" data-choice-tab="' + escHTML(c) + '" aria-selected="' + (c === activeTab) + '">' +
+      escHTML(Utils.getConcernConfig(c).label || c) + ' <span class="choice-tab-count">' + cDone + '/' + cSteps.length + '</span></button>';
+  });
+  html += '</div>' +
           '<p class="card-text mb-14" style="font-size:0.86rem;color:var(--text-secondary);">' +
-            'Tap each step as you complete it. Tap again to undo.' +
+            (isLocked ? 'Today is submitted. Tap Edit if you need to change it.' : 'Tick what you managed today, then submit. Partial days count too.') +
           '</p>';
 
   steps.forEach(function (step) {
     var isStepDone = ritualDone.indexOf(step.id) >= 0;
-    html += '<div class="ritual-step-item' + (isStepDone ? ' checked' : '') + '" data-step-id="' + step.id + '" role="checkbox" aria-checked="' + isStepDone + '" tabindex="0">' +
+    html += '<div class="ritual-step-item' + (isStepDone ? ' checked' : '') + (isLocked ? ' locked' : '') + '" data-step-id="' + escHTML(step.id) + '" data-concern="' + escHTML(step.concern) + '"' + (step.concern !== activeTab ? ' hidden' : '') + ' role="checkbox" aria-checked="' + isStepDone + '" aria-disabled="' + isLocked + '" tabindex="0">' +
       '<div class="ritual-checkbox">' + (isStepDone ? ICONS.check : '') + '</div>' +
       '<span class="ritual-step-text"><strong>' + step.slot + ':</strong> ' + escHTML(step.text) + '</span>' +
     '</div>';
   });
 
+  html += '<div class="day-progress" aria-label="Today\'s progress">' +
+      '<div class="day-progress-head"><span>Today\'s progress</span><strong>' + (isLocked ? savedPct : dayPct) + '%</strong></div>' +
+      '<div class="day-progress-track"><div class="day-progress-fill" style="width:' + (isLocked ? savedPct : dayPct) + '%"></div></div>' +
+    '</div>';
+  if (isLocked) {
+    html += '<div class="day-submit-row"><span class="day-submitted-note">' + ICONS.check + ' Submitted: ' + savedPct + '% done today</span>' +
+      '<button type="button" class="btn btn-secondary btn-sm" id="btn-edit-day">Edit</button></div>';
+  } else {
+    html += '<div class="day-submit-row">' +
+      '<button type="button" class="btn btn-primary" id="btn-submit-day"' + (doneCount ? '' : ' disabled') + '>' +
+        (checkinToday.editing ? 'Save changes (' + dayPct + '%)' : 'Submit ' + dayPct + '% for today') + '</button>' +
+      (checkinToday.editing ? '<button type="button" class="btn-text-link" id="btn-cancel-edit">Cancel</button>' : '') +
+    '</div>';
+  }
+
   var ringFull = isCheckedIn || isRest;
-  var ringColor = isRest && !isCheckedIn ? '#93C5FD' : '#0B5E9E';
+  var ringColor = isRest && !isCheckedIn ? '#FFB6C1' : '#FF2A85';
   var ringInner;
   if (isCheckedIn) {
-    ringInner = '<path class="ring-check" d="M 60 92 L 80 112 L 122 70" stroke="#0B5E9E" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>';
+    ringInner = '<path class="ring-check" d="M 60 92 L 80 112 L 122 70" stroke="#FF2A85" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>';
   } else if (isRest) {
-    ringInner = '<text x="90" y="86" text-anchor="middle" font-family="Figtree, sans-serif" font-size="14" font-weight="600" fill="#6B7280">REST</text><text x="90" y="108" text-anchor="middle" font-family="Figtree, sans-serif" font-size="17" font-weight="700" fill="#0F2D5E">DAY</text>';
+    ringInner = '<text x="90" y="86" text-anchor="middle" font-family="Figtree, sans-serif" font-size="14" font-weight="600" fill="#6B7280">REST</text><text x="90" y="108" text-anchor="middle" font-family="Figtree, sans-serif" font-size="17" font-weight="700" fill="#FFFFFF">DAY</text>';
   } else {
-    ringInner = '<text x="90" y="86" text-anchor="middle" font-family="Figtree, sans-serif" font-size="14" font-weight="600" fill="#6B7280">TAP TO</text><text x="90" y="108" text-anchor="middle" font-family="Figtree, sans-serif" font-size="17" font-weight="700" fill="#0F2D5E">COMPLETE</text>';
+    ringInner = '<text x="90" y="86" text-anchor="middle" font-family="Figtree, sans-serif" font-size="14" font-weight="600" fill="#6B7280">TAP TO</text><text x="90" y="108" text-anchor="middle" font-family="Figtree, sans-serif" font-size="17" font-weight="700" fill="#FFFFFF">COMPLETE</text>';
   }
 
   var statusHeading = isCheckedIn ? 'Ritual complete today' : (isRest ? t.restDayTaken : 'Daily status');
   var statusText = isCheckedIn
-    ? 'Great consistency! Your streak is ' + streak + (streak === 1 ? ' day.' : ' days.')
+    ? savedPct + '% logged today. Your streak is ' + streak + (streak === 1 ? ' day.' : ' days.')
     : (isRest ? t.restDaySub : 'Complete your ritual to log today.');
 
   var restControl = '';
@@ -1847,17 +1969,17 @@ function renderCheckinSection(container) {
       : '<p class="muted">' + escHTML(t.restLimitNotice) + '</p>';
   }
 
-  html += '<button type="button" class="btn-mark-all-done" id="btn-mark-all-done">' +
+  html += (isLocked ? '' : '<button type="button" class="btn-mark-all-done" id="btn-mark-all-done">' +
       ICONS.check +
-      '<span>Mark all steps done today</span>' +
-    '</button>' +
+      '<span>Tick every step</span>' +
+    '</button>') +
   '</div></div>' +
 
       '<div class="checkin-right-col">' +
         '<div class="card text-center" style="padding:28px 20px;">' +
           '<div class="ring-container mb-16" style="display:flex;justify-content:center;">' +
             '<svg class="checkin-ring' + (isCheckedIn ? ' done pulse' : '') + '" width="140" height="140" viewBox="0 0 180 180" id="ring-btn" role="button" tabindex="0" aria-pressed="' + isCheckedIn + '" aria-label="Toggle today\'s check-in" style="cursor:pointer;">' +
-              '<circle cx="90" cy="90" r="76" stroke="#E6F2FC" stroke-width="12" fill="none"/>' +
+              '<circle cx="90" cy="90" r="76" stroke="var(--ob-hair, rgba(255,42,133,0.2))" stroke-width="12" fill="none"/>' +
               '<circle class="ring-track" cx="90" cy="90" r="76" stroke="' + ringColor + '" stroke-width="12" fill="none" stroke-linecap="round" stroke-dasharray="477.5" stroke-dashoffset="' + (ringFull ? '0' : '477.5') + '" style="transition:stroke-dashoffset 0.6s var(--ease-out);"/>' +
               ringInner +
             '</svg>' +
@@ -1891,7 +2013,7 @@ function renderCheckinSection(container) {
     Storage.save(p);
     renderCheckinSection(container);
     refreshPrimaryCard();
-    refreshSections(['results', 'nextstep']);
+    refreshSections(['bodymap', 'results', 'nextstep']);
     if (focusSel) {
       var f = container.querySelector(focusSel);
       if (f && f.focus) f.focus();
@@ -1903,12 +2025,15 @@ function renderCheckinSection(container) {
     updateDay(date, function (ci) {
       if (ci.done) {
         ci.done = false;
+        ci.pct = 0;
         ci.ritualDone = [];
       } else {
         ci.done = true;
         ci.rest = false;
+        ci.pct = 100;
         ci.ritualDone = allStepIds.slice();
       }
+      ci.editing = false;
     }, msgFn, focusSel);
   }
 
@@ -1927,56 +2052,78 @@ function renderCheckinSection(container) {
       p.paused = null;
       Storage.save(p);
       renderCheckinSection(container);
-      refreshSections(['results', 'nextstep']);
+      refreshSections(['bodymap', 'results', 'nextstep']);
       UI.toast('Routine resumed');
-    });
-  }
-
-  var mindsetCardEl = container.querySelector('#daily-mindset-card');
-  if (mindsetCardEl) {
-    var quoteIdx = 0;
-    onActivate(mindsetCardEl, function () {
-      var quotes = CONTENT.mindsetQuotes || [];
-      if (!quotes.length) return;
-      quoteIdx = (quoteIdx + 1) % quotes.length;
-      var nextQ = quotes[quoteIdx];
-      var qText = container.querySelector('#mindset-quote-text');
-      var qAuth = container.querySelector('#mindset-author-text');
-      if (!qText || !qAuth) return;
-      qText.style.opacity = '0';
-      qAuth.style.opacity = '0';
-      setTimeout(function () {
-        qText.textContent = nextQ.quote;
-        qAuth.textContent = nextQ.author;
-        qText.style.opacity = '1';
-        qAuth.style.opacity = '1';
-      }, 150);
     });
   }
 
   container.querySelectorAll('.ritual-step-item').forEach(function (item) {
     onActivate(item, function () {
+      if (isLocked) { UI.toast('Tap Edit to change today'); return; }
       var stepId = item.getAttribute('data-step-id');
       updateDay(today, function (ci) {
         var i = ci.ritualDone.indexOf(stepId);
         if (i >= 0) ci.ritualDone.splice(i, 1);
         else ci.ritualDone.push(stepId);
-        ci.done = allStepIds.length > 0 && allStepIds.every(function (id) { return ci.ritualDone.indexOf(id) >= 0; });
         if (ci.ritualDone.length) ci.rest = false;
-      }, function (ci) {
-        return ci.done ? 'All steps complete. Checked in!' : 'Step updated';
-      }, '[data-step-id="' + stepId + '"]');
+        var n = allStepIds.filter(function (id) { return ci.ritualDone.indexOf(id) >= 0; }).length;
+        ci.pct = allStepIds.length ? Math.round(n / allStepIds.length * 100) : 0;
+        ci.done = ci.pct > 0;
+      }, null, '[data-step-id="' + stepId + '"]');
     });
   });
+
+  container.querySelectorAll('[data-choice-tab]').forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      var c = tab.getAttribute('data-choice-tab');
+      window.__ritualTab = c;
+      container.querySelectorAll('[data-choice-tab]').forEach(function (b) {
+        var on = b === tab;
+        b.classList.toggle('is-active', on);
+        b.setAttribute('aria-selected', String(on));
+      });
+      container.querySelectorAll('.ritual-step-item').forEach(function (it) {
+        it.hidden = it.getAttribute('data-concern') !== c;
+      });
+    });
+  });
+
+  var submitBtn = container.querySelector('#btn-submit-day');
+  if (submitBtn) {
+    submitBtn.addEventListener('click', function () {
+      updateDay(today, function (ci) {
+        var n = allStepIds.filter(function (id) { return ci.ritualDone.indexOf(id) >= 0; }).length;
+        ci.pct = allStepIds.length ? Math.round(n / allStepIds.length * 100) : 0;
+        ci.done = ci.pct > 0;
+        ci.savedDone = ci.ritualDone.slice();
+        ci.editing = false;
+        if (ci.done) ci.rest = false;
+      }, function (ci) { return ci.pct + '% saved for today'; }, '#btn-edit-day');
+    });
+  }
+  var editBtn = container.querySelector('#btn-edit-day');
+  if (editBtn) {
+    editBtn.addEventListener('click', function () {
+      updateDay(today, function (ci) { ci.editing = true; }, null, '#btn-submit-day');
+    });
+  }
+  var cancelEditBtn = container.querySelector('#btn-cancel-edit');
+  if (cancelEditBtn) {
+    cancelEditBtn.addEventListener('click', function () {
+      updateDay(today, function (ci) {
+        ci.editing = false;
+        if (ci.savedDone) ci.ritualDone = ci.savedDone.slice();
+      }, null, '#btn-edit-day');
+    });
+  }
 
   var markAllBtn = container.querySelector('#btn-mark-all-done');
   if (markAllBtn) {
     markAllBtn.addEventListener('click', function () {
       updateDay(today, function (ci) {
         ci.ritualDone = allStepIds.slice();
-        ci.done = true;
         ci.rest = false;
-      }, 'All ritual steps completed!', '#btn-mark-all-done');
+      }, 'All steps ticked. Submit to save today.', '#btn-submit-day');
     });
   }
 
@@ -2248,7 +2395,7 @@ function renderMindSection(container) {
   var today = Utils.getToday();
   var ci = profile ? Utils.getCheckinForDate(profile, today) : null;
   var currentMood = (ci && ci.mood) || null;
-  var affirmation = Utils.getDailyAffirmation(today);
+  var mindset = Utils.getDailyMindsetQuote(today);
 
   var html = '<div class="container">' +
     '<div class="section-header text-center">' +
@@ -2259,7 +2406,7 @@ function renderMindSection(container) {
     '<div class="mind-space-grid">' +
       // 1. 60-Second Calm Breathing Pacer
       '<div class="breathing-card">' +
-        '<div class="badge badge-blue mb-8">Nervous system reset</div>' +
+        '<div class="badge badge-pink mb-8">Nervous system reset</div>' +
         '<h3 class="card-title" style="font-size:1.2rem;margin-bottom:4px;">' + escHTML(mind.breathing.title) + '</h3>' +
         '<p class="card-text mb-16" style="font-size:0.88rem;color:var(--text-secondary);">' + escHTML(mind.breathing.hint) + '</p>' +
 
@@ -2269,19 +2416,17 @@ function renderMindSection(container) {
             '<span id="breathing-label" style="font-weight:700;">Tap to start</span>' +
           '</div>' +
         '</div>' +
-        '<p style="font-size:0.84rem;color:#0B5E9E;margin-top:14px;font-weight:600;text-align:center;">Tap circle to start / pause</p>' +
+        '<p id="breathing-toggle-text" style="font-size:0.84rem;color:var(--ob-pink, #FF2A85);margin-top:14px;font-weight:600;text-align:center;cursor:pointer;">Tap circle to start / pause</p>' +
       '</div>' +
 
-      // 2. Daily Grounding Affirmation Card
-      '<div class="affirmation-card">' +
-        '<div>' +
-          '<div class="badge badge-blue mb-8">Daily grounding reflection</div>' +
-          '<div class="affirmation-quote-mark">&ldquo;</div>' +
-          '<div class="affirmation-text">' + escHTML(affirmation) + '</div>' +
+      // 2. Daily mindset (tap to shuffle)
+      '<div class="mindset-card mind-mindset" id="daily-mindset-card" role="button" tabindex="0" title="Show another quote">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+          '<div class="mindset-badge">Daily mindset</div>' +
+          '<span class="mindset-card-shuffle-hint">Tap to shuffle</span>' +
         '</div>' +
-        '<p class="muted" style="font-size:0.82rem;margin-bottom:0;">' +
-          'Mental patience is essential. Cells rebuild during quiet rest.' +
-        '</p>' +
+        '<div class="mindset-quote" id="mindset-quote-text" style="transition:opacity 0.2s ease;">' + escHTML(mindset.quote) + '</div>' +
+        '<div class="mindset-author" id="mindset-author-text" style="transition:opacity 0.2s ease;">' + escHTML(mindset.author) + '</div>' +
       '</div>' +
     '</div>' +
 
@@ -2292,7 +2437,7 @@ function renderMindSection(container) {
           '<h3 class="card-title" style="font-size:1.1rem;margin-bottom:4px;">' + escHTML(mind.weather.title) + '</h3>' +
           '<p class="card-text" style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:0;">' + escHTML(mind.weather.subline) + '</p>' +
         '</div>' +
-        '<span class="badge badge-blue" id="mood-status-badge">' + (currentMood ? 'Logged: ' + escHTML(currentMood) : 'Not logged today') + '</span>' +
+        '<span class="badge badge-pink" id="mood-status-badge">' + (currentMood ? 'Logged: ' + escHTML(currentMood) : 'Not logged today') + '</span>' +
       '</div>' +
       '<div class="mood-selector-grid">';
 
@@ -2309,21 +2454,46 @@ function renderMindSection(container) {
 
   container.innerHTML = html;
 
+  var mindsetCardEl = container.querySelector('#daily-mindset-card');
+  if (mindsetCardEl) {
+    var quotes = CONTENT.mindsetQuotes || [];
+    var quoteIdx = Math.max(0, quotes.indexOf(mindset));
+    var shuffle = function () {
+      if (quotes.length < 2) return;
+      quoteIdx = (quoteIdx + 1) % quotes.length;
+      var nextQ = quotes[quoteIdx];
+      var qText = container.querySelector('#mindset-quote-text');
+      var qAuth = container.querySelector('#mindset-author-text');
+      qText.style.opacity = '0'; qAuth.style.opacity = '0';
+      setTimeout(function () {
+        qText.textContent = nextQ.quote; qAuth.textContent = nextQ.author;
+        qText.style.opacity = '1'; qAuth.style.opacity = '1';
+      }, 150);
+    };
+    mindsetCardEl.addEventListener('click', shuffle);
+    mindsetCardEl.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); shuffle(); }
+    });
+  }
+
   // Breathing pacer controller
   var isBreathingActive = false;
   var breathTimer = null;
-  var coreEl = document.getElementById('breathing-core');
-  var labelEl = document.getElementById('breathing-label');
+  var coreEl = container.querySelector('#breathing-core');
+  var labelEl = container.querySelector('#breathing-label');
+  var hintText = container.querySelector('#breathing-toggle-text');
   var btnBreathing = document.getElementById('btn-toggle-breathing');
 
   function toggleBreathing() {
     isBreathingActive = !isBreathingActive;
     if (isBreathingActive) {
       if (btnBreathing) btnBreathing.textContent = mind.breathing.btnPause;
+      if (hintText) hintText.textContent = 'Tap circle to pause';
       runBreathCycle();
     } else {
       clearTimeout(breathTimer);
       if (btnBreathing) btnBreathing.textContent = mind.breathing.btnStart;
+      if (hintText) hintText.textContent = 'Tap circle to start';
       if (coreEl) coreEl.className = 'breathing-circle-core';
       if (labelEl) labelEl.textContent = 'Tap to start';
     }
@@ -2338,9 +2508,12 @@ function renderMindSection(container) {
       }
     });
   }
+  if (hintText) {
+    hintText.addEventListener('click', toggleBreathing);
+  }
 
   function runBreathCycle() {
-    if (!isBreathingActive) return;
+    if (!isBreathingActive || !document.body.contains(coreEl)) { isBreathingActive = false; return; }
     labelEl.textContent = mind.breathing.inhale;
     coreEl.className = 'breathing-circle-core inhaling';
     
@@ -2436,45 +2609,68 @@ function renderResultsSection(container) {
     '<div class="results-bento-grid">' +
       // Card 1: 28-day consistency dial
       '<div class="results-bento-card results-bento-span-5">' +
-        '<div class="badge badge-blue mb-12">Consistency</div>' +
+        '<div class="badge mb-12" style="background:var(--ob-tint, rgba(255,42,133,0.18));color:var(--ob-pink, #FF2A85);border:1px solid var(--ob-hair, rgba(255,42,133,0.3));font-weight:700;">Consistency</div>' +
         '<div class="results-score-dial-wrap">' +
           '<svg class="results-score-dial-svg" viewBox="0 0 100 100" aria-hidden="true">' +
-            '<circle class="results-score-dial-bg" cx="50" cy="50" r="38" />' +
-            '<circle class="results-score-dial-val" cx="50" cy="50" r="38" stroke-dasharray="' + circ + '" stroke-dashoffset="' + dashoffset + '" />' +
+            '<circle class="results-score-dial-bg" cx="50" cy="50" r="38" stroke="var(--ob-hair, rgba(255,42,133,0.2))" fill="none" />' +
+            '<circle class="results-score-dial-val" cx="50" cy="50" r="38" stroke="var(--ob-pink, #FF2A85)" fill="none" stroke-linecap="round" stroke-dasharray="' + circ + '" stroke-dashoffset="' + dashoffset + '" />' +
           '</svg>' +
           '<div>' +
-            '<div style="font-size:2rem;font-weight:800;color:#0F2D5E;line-height:1;">' + consistencyPct + '%</div>' +
-            '<div style="font-size:0.86rem;color:#64748B;margin-top:4px;">' + escHTML(CONTENT.rings.consistency) + '</div>' +
+            '<div style="font-size:2rem;font-weight:800;color:var(--ob-head, #FFFFFF);line-height:1;">' + consistencyPct + '%</div>' +
+            '<div style="font-size:0.86rem;color:var(--ob-label, #FFD1DC);margin-top:4px;">' + escHTML(CONTENT.rings.consistency) + '</div>' +
             '<div style="margin-top:8px;">' +
-              '<span class="results-delta-pill ' + (consistencyPct >= 70 ? 'positive' : 'neutral') + '">' +
+              '<span class="results-delta-pill" style="background:var(--ob-tint, rgba(255,42,133,0.2));color:var(--ob-pink, #FF2A85);font-weight:700;">' +
                 (consistencyPct >= 70 ? '&#9650; Steady pace' : '&#9644; Building momentum') +
               '</span>' +
             '</div>' +
           '</div>' +
         '</div>' +
+        '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--ob-hair, rgba(255,42,133,0.25));display:flex;justify-content:space-between;font-size:0.86rem;">' +
+          '<span style="color:var(--ob-body, #FFEBF2);">Current streak:</span>' +
+          '<strong style="color:var(--ob-pink, #FF2A85);">' + streakDays + (streakDays === 1 ? ' day' : ' days') + '</strong>' +
+        '</div>' +
+      '</div>' +
+        '</div>' +
         '<div style="margin-top:18px;padding-top:14px;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between;font-size:0.86rem;">' +
           '<span style="color:#64748B;">Current streak:</span>' +
-          '<strong style="color:#0B5E9E;">' + streakDays + (streakDays === 1 ? ' day' : ' days') + '</strong>' +
+          '<strong style="color:#FF2A85;">' + streakDays + (streakDays === 1 ? ' day' : ' days') + '</strong>' +
         '</div>' +
       '</div>' +
 
       // Card 2: verdict
       '<div class="results-bento-card results-bento-span-7 ' + escHTML(verdict.cssClass) + '">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
-          '<div class="badge mb-0" style="background:#FFFFFF;font-weight:700;">' + escHTML(verdict.label) + '</div>' +
-          '<span style="font-size:0.82rem;font-weight:600;color:#0B5E9E;">Where you are</span>' +
+          '<div class="badge mb-0" style="background:var(--ob-tint, rgba(255,42,133,0.18));color:var(--ob-pink, #FF2A85);font-weight:700;">Verdict</div>' +
+          '<span class="badge" style="background:var(--ob-tint, rgba(255,42,133,0.15));color:var(--ob-pink, #FF2A85);font-size:0.82rem;font-weight:600;padding:3px 10px;">' + (currentWk >= cfg.fullWindowWeeks ? 'Full window reached' : 'Week ' + currentWk + ' of ' + cfg.fullWindowWeeks) + '</span>' +
         '</div>' +
-        '<h3 class="card-title" style="font-size:1.2rem;margin-bottom:6px;">' + escHTML(verdict.label) + '</h3>' +
-        '<p class="card-text mb-12" style="font-size:0.92rem;line-height:1.5;">' + escHTML(verdict.message) + '</p>' +
-        '<div class="results-horizon-track">' +
-          '<div class="results-horizon-fill" style="width:' + Math.min(100, Math.round((currentWk / cfg.fullWindowWeeks) * 100)) + '%;"></div>' +
+        '<h3 class="card-title" style="font-size:1.2rem;margin-bottom:6px;color:var(--ob-head, #FFFFFF);">' + escHTML(verdict.label) + '</h3>' +
+        '<p class="card-text mb-12" style="font-size:0.92rem;line-height:1.5;color:var(--ob-body, #FFEBF2);">' + escHTML(verdict.message) + '</p>' +
+        '<div class="results-horizon-track" style="background:var(--ob-glass-hi, rgba(255,255,255,0.08));border-radius:999px;height:8px;overflow:hidden;margin:12px 0 6px 0;">' +
+          '<div class="results-horizon-fill" style="width:' + (function() {
+            var completedWeeksCount = 0;
+            if (profile.checkins && profile.checkins.length) {
+              var wkMap = {};
+              profile.checkins.forEach(function (c) {
+                if (c.done) {
+                  var diffDays = Utils.daysBetween(profile.startDate, c.date);
+                  var w = Math.max(1, Math.floor(diffDays / 7) + 1);
+                  wkMap[w] = (wkMap[w] || 0) + 1;
+                }
+              });
+              completedWeeksCount = Object.keys(wkMap).length;
+            }
+            if (profile.weeklyRatings && profile.weeklyRatings.length) {
+              completedWeeksCount = Math.max(completedWeeksCount, profile.weeklyRatings.length);
+            }
+            return Math.min(100, Math.round((completedWeeksCount / cfg.fullWindowWeeks) * 100));
+          })() + '%;background:linear-gradient(90deg, #FF2A85 0%, #FF66B2 100%);height:100%;border-radius:999px;transition:width 0.8s ease;"></div>' +
         '</div>' +
-        '<div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#64748B;margin-bottom:12px;">' +
-          '<span>Week 1</span>' +
-          '<span>Week ' + cfg.earlyWindowWeeks + ' (early shifts)</span>' +
-          '<span>Week ' + cfg.fullWindowWeeks + ' (real change)</span>' +
+        '<div style="display:flex;justify-content:space-between;font-size:0.78rem;color:var(--ob-label, #FFD1DC);margin-bottom:12px;">' +
+          '<span>Week 1 (Start)</span>' +
+          '<span>Week ' + cfg.earlyWindowWeeks + ' (Early shifts)</span>' +
+          '<span>Week ' + cfg.fullWindowWeeks + ' (Real change)</span>' +
         '</div>' +
-        '<ul style="margin:0;padding-left:18px;font-size:0.85rem;color:#475569;">' +
+        '<ul style="margin:0;padding-left:18px;font-size:0.85rem;color:var(--ob-body, #FFEBF2);">' +
           verdict.reasons.map(function (r) { return '<li>' + escHTML(r) + '</li>'; }).join('') +
         '</ul>' +
       '</div>' +
@@ -2496,18 +2692,22 @@ function renderResultsSection(container) {
         '<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:12px;">';
 
   markersList.forEach(function (m) {
-    html += '<div class="results-matrix-row">' +
+    html += '<button type="button" class="results-matrix-row marker-card-btn" data-marker-click="' + escHTML(m.id) + '" style="cursor:pointer;text-align:left;width:100%;background:var(--ob-glass-hi, rgba(255,255,255,0.06));border:1.5px solid var(--ob-hair, rgba(255,42,133,0.3));border-radius:14px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;transition:all 0.2s ease;">' +
       '<div style="flex:1;">' +
-        '<div style="font-weight:700;color:#0F2D5E;font-size:0.92rem;">' + escHTML(m.name) + '</div>' +
-        '<div style="font-size:0.8rem;color:#64748B;margin-top:2px;">' + escHTML(m.hint) + '</div>' +
+        '<div style="font-weight:700;color:var(--ob-head, #FFFFFF);font-size:0.95rem;display:flex;align-items:center;gap:8px;">' +
+          '<span>' + escHTML(m.name) + '</span>' +
+          '<span class="badge" style="background:var(--ob-tint, rgba(255,42,133,0.18));color:var(--ob-pink, #FF2A85);font-size:0.72rem;padding:2px 8px;border:1px solid var(--ob-hair, rgba(255,42,133,0.3));">Tap to review</span>' +
+        '</div>' +
+        '<div style="font-size:0.82rem;color:var(--ob-label, #FFD1DC);margin-top:4px;">' + escHTML(m.hint) + '</div>' +
       '</div>' +
-    '</div>';
+      '<span style="color:var(--ob-pink, #FF2A85);font-weight:700;font-size:1.1rem;">&rarr;</span>' +
+    '</button>';
   });
 
   html += '</div>';
 
   html += '<div class="review-history" style="margin-top:18px;padding-top:14px;border-top:1px solid #E2E8F0;">' +
-    '<h4 style="font-size:0.95rem;font-weight:700;color:#0F2D5E;margin-bottom:8px;">Your weekly reviews</h4>';
+    '<h4 style="font-size:0.95rem;font-weight:700;color:#FFFFFF;margin-bottom:8px;">Your weekly reviews</h4>';
   if (ratings.length) {
     html += '<ul style="margin:0;padding-left:18px;font-size:0.86rem;color:#475569;">';
     ratings.forEach(function (r) {
@@ -2522,7 +2722,7 @@ function renderResultsSection(container) {
   html +=
       // Card 4: supply
       '<div class="results-bento-card results-bento-span-6">' +
-        '<div class="badge badge-blue mb-10">Formula supply</div>' +
+        '<div class="badge badge-pink mb-10">Formula supply</div>' +
         '<h3 class="card-title" style="font-size:1.05rem;margin-bottom:8px;">Your shelf</h3>' +
         '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">' +
           (profile.products || []).map(function (prod) {
@@ -2530,7 +2730,7 @@ function renderResultsSection(container) {
             var statusStr = (daysLeft !== null) ? (daysLeft > 0 ? (daysLeft + ' days left') : 'Refill due') : '30-day cycle';
             return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0;font-size:0.86rem;">' +
               '<span style="font-weight:600;color:#0F172A;">' + escHTML(prod.name) + '</span>' +
-              '<span style="font-weight:700;color:#0B5E9E;">' + statusStr + '</span>' +
+              '<span style="font-weight:700;color:#FF2A85;">' + statusStr + '</span>' +
             '</div>';
           }).join('') +
         '</div>' +
@@ -2541,14 +2741,14 @@ function renderResultsSection(container) {
 
       // Card 5: reassurance
       '<div class="results-bento-card results-bento-span-6">' +
-        '<div class="badge badge-blue mb-10">Good to know</div>' +
+        '<div class="badge badge-pink mb-10">Good to know</div>' +
         '<h3 class="card-title" style="font-size:1.05rem;margin-bottom:6px;">Quiet, compounding care</h3>' +
         '<p class="card-text mb-12" style="font-size:0.88rem;color:#475569;line-height:1.5;">' +
           'Surface changes follow weeks of work under the skin and scalp. Daily care adds up before the mirror shows it.' +
         '</p>' +
-        '<div style="background:#EFF6FF;padding:12px 14px;border-radius:12px;border:1px solid #BFDBFE;">' +
-          '<div style="font-weight:700;color:#1E40AF;font-size:0.84rem;margin-bottom:2px;">Tip for week ' + currentWk + '</div>' +
-          '<div style="font-size:0.82rem;color:#1E3A8A;">Judge a routine over several weeks of steady use, not a few days.</div>' +
+        '<div style="background:var(--ob-tint, rgba(255,42,133,0.12));padding:12px 14px;border-radius:12px;border:1px solid rgba(255,42,133,0.3);">' +
+          '<div style="font-weight:700;color:#FF2A85;font-size:0.84rem;margin-bottom:2px;">Tip for week ' + currentWk + '</div>' +
+          '<div style="font-size:0.82rem;color:#FFFFFF;">Judge a routine over several weeks of steady use, not a few days.</div>' +
         '</div>' +
       '</div>' +
 
@@ -2562,6 +2762,12 @@ function renderResultsSection(container) {
   if (logBtn) logBtn.addEventListener('click', function () { openWeeklyReviewDrawer(); });
   var recapBtn = container.querySelector('#btn-open-recap');
   if (recapBtn) recapBtn.addEventListener('click', function () { openRecapDrawer(); });
+  container.querySelectorAll('[data-marker-click]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var mId = btn.getAttribute('data-marker-click');
+      openSingleMarkerReviewModal(mId);
+    });
+  });
 }
 
 
@@ -2590,7 +2796,7 @@ function renderNextStepSection(container) {
               'Used ' + burnRate.usedDoses + ' of ' + burnRate.totalDoses + ' doses (' + burnRate.remainingDoses + ' remaining)' +
             '</p>' +
           '</div>' +
-          (burnRate.isLow ? '<span class="badge" style="background:#FEF2F2;color:#991B1B;font-weight:700;">Reorder soon</span>' : '<span class="badge badge-blue">Stock healthy</span>') +
+          (burnRate.isLow ? '<span class="badge" style="background:#FEF2F2;color:#991B1B;font-weight:700;">Reorder soon</span>' : '<span class="badge badge-pink">Stock healthy</span>') +
         '</div>' +
         '<div class="burn-rate-meter" role="img" aria-label="' + burnRate.pctUsed + ' percent used">' +
           '<div class="burn-rate-fill" style="width:' + burnRate.pctUsed + '%;"></div>' +
@@ -2791,7 +2997,7 @@ function openChatbotDrawer(initialTopicId) {
 
             '<div class="answer-card answer-science">' +
               '<div class="answer-card-header">' +
-                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0B5E9E" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FF2A85" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>' +
                 '<span>The Science (Biology)</span>' +
               '</div>' +
               '<p class="answer-card-text">' + scienceHtml + '</p>' +
@@ -2851,6 +3057,88 @@ function openChatbotDrawer(initialTopicId) {
 
 // 2. Settings & Menu Drawer with In-Drawer Reset Confirmation
 /* ---- Weekly review drawer ---- */
+
+/* ---- Single Marker Review Modal with Save Review ---- */
+function openSingleMarkerReviewModal(targetMarkerId) {
+  var profile = Storage.load();
+  if (!profile) return;
+  var currentWk = Utils.getWeekNumber(profile.startDate);
+  var markersList = (CONTENT.microMarkers && CONTENT.microMarkers[profile.concern]) || [];
+  var marker = markersList.find(function (m) { return m.id === targetMarkerId; }) || markersList[0];
+  if (!marker) { openWeeklyReviewDrawer(); return; }
+
+  var html = '<form id="marker-review-form" novalidate style="display:flex;flex-direction:column;gap:16px;">' +
+    '<div class="callout mb-12" style="background:var(--ob-tint, rgba(255,42,133,0.15));border:1.5px solid var(--ob-hair, rgba(255,42,133,0.3));border-radius:14px;padding:14px 16px;">' +
+      '<h4 style="font-size:1.05rem;font-weight:700;color:var(--ob-head, #FFFFFF);margin:0 0 4px 0;">' + escHTML(marker.name) + '</h4>' +
+      '<p style="font-size:0.86rem;color:var(--ob-body, #FFEBF2);margin:0;">' + escHTML(marker.hint) + '</p>' +
+    '</div>' +
+    '<div class="field">' +
+      '<label style="font-weight:700;color:var(--ob-head, #FFFFFF);display:block;margin-bottom:8px;">What did you observe this week?</label>' +
+      '<div class="chip-group" data-marker-field="' + escHTML(marker.id) + '" role="radiogroup" style="display:flex;flex-direction:column;gap:8px;">' +
+        marker.options.map(function (opt) {
+          return '<button type="button" class="chip marker-opt-chip" role="radio" aria-checked="false" data-score="' + opt.score + '" style="cursor:pointer;padding:12px 14px;text-align:left;background:var(--ob-glass-hi);border:1.5px solid var(--ob-hair);border-radius:10px;color:var(--ob-body);font-weight:600;font-size:0.9rem;">' + escHTML(opt.label) + '</button>';
+        }).join('') +
+      '</div>' +
+    '</div>' +
+    '<div class="field">' +
+      '<label style="font-weight:700;color:var(--ob-head, #FFFFFF);display:block;margin-bottom:8px;">Overall feeling for week ' + currentWk + ' (1 to 5):</label>' +
+      UI.ratingHTML('marker-overall', '', 4) +
+    '</div>' +
+    '<button type="submit" class="btn btn-primary btn-full mt-12" id="btn-save-single-marker" disabled style="background:#FF2A85;color:#FFFFFF;padding:14px;font-size:1rem;font-weight:700;border-radius:999px;cursor:pointer;">Save review &rarr;</button>' +
+  '</form>';
+
+  Drawer.open(marker.name + ' · Week ' + currentWk, html, function (panelEl) {
+    var scoreVal = 0;
+    var overallRating = 4;
+    var submitBtn = panelEl.querySelector('#btn-save-single-marker');
+
+    panelEl.querySelectorAll('.marker-opt-chip').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        panelEl.querySelectorAll('.marker-opt-chip').forEach(function (c) {
+          c.classList.remove('selected');
+          c.style.background = 'var(--ob-glass-hi)';
+          c.style.borderColor = 'var(--ob-hair)';
+          c.style.color = 'var(--ob-body)';
+        });
+        chip.classList.add('selected');
+        chip.style.background = '#FF2A85';
+        chip.style.borderColor = '#FF66B2';
+        chip.style.color = '#FFFFFF';
+        scoreVal = Number(chip.getAttribute('data-score')) || 3;
+        if (submitBtn) submitBtn.disabled = false;
+      });
+    });
+
+    UI.bindRating('marker-overall', function (v) { overallRating = v; });
+
+    var formEl = panelEl.querySelector('#marker-review-form');
+    if (formEl) {
+      formEl.addEventListener('submit', function (e) {
+        e.preventDefault();
+        if (!scoreVal) return;
+        var prof = Storage.load();
+        if (!prof) return;
+        prof.weeklyRatings = prof.weeklyRatings || [];
+        var existingIdx = prof.weeklyRatings.findIndex(function (r) { return r.week === currentWk; });
+        var newRating = {
+          week: currentWk,
+          primary: scoreVal,
+          secondary: overallRating,
+          unusual: false,
+          date: Utils.getToday(),
+          markerName: marker.name
+        };
+        if (existingIdx >= 0) prof.weeklyRatings[existingIdx] = newRating;
+        else prof.weeklyRatings.push(newRating);
+        Storage.save(prof);
+        Drawer.close();
+        refreshSections(['results', 'nextstep']);
+        UI.toast('Review saved for ' + marker.name);
+      });
+    }
+  });
+}
+
 function openWeeklyReviewDrawer() {
   var profile = Storage.load();
   if (!profile) { Router.navigate('#/start'); return; }
@@ -2960,7 +3248,7 @@ function openWeeklyReviewDrawer() {
       Storage.save(fresh);
 
       Drawer.close();
-      refreshSections(['results', 'nextstep']);
+      refreshSections(['bodymap', 'results', 'nextstep']);
       refreshPrimaryCard();
       UI.toast('Weekly review saved. Verdict updated.');
     });
@@ -3504,12 +3792,15 @@ function initIntroAnimation() {
   var beeState = {
     step: 0,
     name: '',
-    concern: 'hair',
+    concerns: [],
+    shelfIdx: 0,
     ownedProducts: [],
     routineTime: 'morning',
     startBucket: 'notYet'
   };
 
+  // Head finishes drawing at 7.7s; wait 1s more so the full logo is seen.
+  var INTRO_DONE_MS = 4200;
   var introTimer = null;
   var glideTimer = null;
   var landTimer = null;
@@ -3530,6 +3821,7 @@ function initIntroAnimation() {
     introEl.classList.remove('playing', 'fading');
     introEl.classList.add('dismissed');
     introEl.setAttribute('aria-hidden', 'true');
+    introEl.style.display = 'none';
     document.body.style.overflow = '';
   }
 
@@ -3633,25 +3925,31 @@ function initIntroAnimation() {
         '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
         '<div class="bee-speech-bubble">' +
           '<h3 class="bee-greeting-title">Nice to meet you, ' + escHTML(beeState.name) + '!</h3>' +
-          '<p class="bee-greeting-sub">What is your primary wellness focus right now?</p>' +
+          '<p class="bee-greeting-sub">What would you like to focus on? Pick one or more.</p>' +
         '</div>' +
         '<div class="bee-options-grid">' +
           CONTENT.quiz.concerns.map(function (c) {
-            var isSel = (beeState.concern === c.value);
-            return '<button type="button" class="bee-choice-btn' + (isSel ? ' selected' : '') + '" data-concern="' + c.value + '">' +
-              '<span class="bee-choice-title">' + escHTML(c.label) + '</span>' +
-              '<span class="bee-choice-desc">Personalized biological timeline</span>' +
+            var isSel = beeState.concerns.indexOf(c.value) >= 0;
+            return '<button type="button" class="bee-choice-btn' + (isSel ? ' selected' : '') + '" data-concern="' + c.value + '" aria-pressed="' + isSel + '">' +
+              '<div style="display:flex;justify-content:space-between;align-items:center;width:100%;">' +
+                '<span class="bee-choice-title">' + escHTML(c.label) + '</span>' +
+                (isSel ? '<span class="bee-choice-check-badge" style="background:#FFFFFF;color:#FF2A85;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.8rem;box-shadow:0 2px 6px rgba(0,0,0,0.3);">✓</span>' : '') +
+              '</div>' +
             '</button>';
           }).join('') +
         '</div>' +
         '<div style="display:flex;justify-content:space-between;width:100%;margin-top:10px;">' +
           '<button type="button" class="btn btn-secondary btn-sm" id="bee-prev">Back</button>' +
-          '<button type="button" class="btn btn-primary btn-sm" id="bee-next-focus">Next step &rarr;</button>' +
+          '<button type="button" class="btn btn-primary btn-sm" id="bee-next-focus"' + (beeState.concerns.length ? '' : ' disabled') + '>Next step &rarr;</button>' +
         '</div>' +
       '</div>';
     } else if (step === 2) {
       // Step 2: Owned Formulas Checklist
-      var catalog = (CONTENT.catalog && CONTENT.catalog[beeState.concern]) || [];
+      var beeQ = beeState.concerns;
+      var beeIdx = Math.min(beeState.shelfIdx, beeQ.length - 1);
+      var beeConcern = beeQ[beeIdx];
+      var beeLabel = Utils.getConcernConfig(beeConcern).label || beeConcern;
+      var catalog = (CONTENT.catalog && CONTENT.catalog[beeConcern]) || [];
       stepHtml = '<div class="bee-character-card">' +
         '<div class="bee-steps-indicator">' +
           '<span class="bee-step-dot"></span>' +
@@ -3661,15 +3959,15 @@ function initIntroAnimation() {
         '</div>' +
         '<div class="bee-avatar-hero">' + (ICONS.guideHero || ICONS.guideAvatar) + '</div>' +
         '<div class="bee-speech-bubble">' +
-          '<h3 class="bee-greeting-title">Do you already have formulas at home?</h3>' +
-          '<p class="bee-greeting-sub">Select every product you currently have with you.</p>' +
+          '<h3 class="bee-greeting-title">Do you already have ' + escHTML(String(beeLabel).toLowerCase()) + ' formulas at home?</h3>' +
+          '<p class="bee-greeting-sub">' + (beeQ.length > 1 ? escHTML(beeLabel) + ' \u00b7 ' + (beeIdx + 1) + ' of ' + beeQ.length + '. ' : '') + 'Select every product you currently have with you.</p>' +
         '</div>' +
         '<div style="display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;max-height:200px;overflow-y:auto;padding:2px;">' +
           catalog.map(function (p) {
             var isChk = (beeState.ownedProducts.indexOf(p.id) >= 0);
-            return '<div class="shelf-product-item' + (isChk ? ' selected focus-ring-active' : '') + '" data-prod-id="' + p.id + '" style="cursor:pointer;padding:10px 14px;background:#F8FAFC;border:1.5px solid ' + (isChk ? '#0B5E9E' : '#E2E8F0') + ';border-radius:12px;display:flex;align-items:center;gap:10px;">' +
-              '<div class="shelf-checkbox" style="width:20px;height:20px;border-radius:6px;border:1.5px solid ' + (isChk ? '#0B5E9E' : '#CBD5E1') + ';background:' + (isChk ? '#0B5E9E' : '#FFFFFF') + ';display:flex;align-items:center;justify-content:center;color:#FFFFFF;">' + (isChk ? ICONS.check : '') + '</div>' +
-              '<span style="font-size:0.9rem;font-weight:600;color:#0F2D5E;">' + escHTML(p.name) + '</span>' +
+            return '<div class="shelf-product-item' + (isChk ? ' selected focus-ring-active' : '') + '" data-prod-id="' + p.id + '" style="cursor:pointer;padding:12px 14px;background:var(--ob-glass-hi, rgba(255,255,255,0.06));border:1.5px solid ' + (isChk ? '#FF2A85' : 'var(--ob-hair, rgba(255,42,133,0.3))') + ';border-radius:12px;display:flex;align-items:center;gap:12px;transition:all 0.2s ease;">' +
+              '<div class="shelf-checkbox" style="width:22px;height:22px;border-radius:6px;border:1.5px solid ' + (isChk ? '#FF2A85' : 'var(--ob-hair, #884466)') + ';background:' + (isChk ? '#FF2A85' : 'transparent') + ';display:flex;align-items:center;justify-content:center;color:#FFFFFF;flex-shrink:0;">' + (isChk ? ICONS.check : '') + '</div>' +
+              '<span style="font-size:0.92rem;font-weight:600;color:' + (isChk ? '#FFFFFF' : '#FFEBF2') + ';">' + escHTML(p.name) + '</span>' +
             '</div>';
           }).join('') +
         '</div>' +
@@ -3693,13 +3991,13 @@ function initIntroAnimation() {
           '<p class="bee-greeting-sub">Realistic routines build quiet daily momentum.</p>' +
         '</div>' +
         '<div style="width:100%;text-align:left;">' +
-          '<div style="font-size:0.85rem;font-weight:700;color:#0F2D5E;margin-bottom:8px;">Preferred daily time:</div>' +
+          '<div style="font-size:0.85rem;font-weight:700;color:#FFFFFF;margin-bottom:8px;">Preferred daily time:</div>' +
           '<div class="chip-group mb-16" style="display:flex;gap:8px;">' +
             '<button type="button" class="chip' + (beeState.routineTime === 'morning' ? ' selected focus-ring-active' : '') + '" data-time="morning">Morning only</button>' +
             '<button type="button" class="chip' + (beeState.routineTime === 'night' ? ' selected focus-ring-active' : '') + '" data-time="night">Night only</button>' +
             '<button type="button" class="chip' + (beeState.routineTime === 'both' ? ' selected focus-ring-active' : '') + '" data-time="both">Both AM & PM</button>' +
           '</div>' +
-          '<div style="font-size:0.85rem;font-weight:700;color:#0F2D5E;margin-bottom:8px;">When did you start:</div>' +
+          '<div style="font-size:0.85rem;font-weight:700;color:#FFFFFF;margin-bottom:8px;">When did you start:</div>' +
           '<div class="chip-group" style="display:flex;gap:8px;">' +
             '<button type="button" class="chip' + (beeState.startBucket === 'notYet' ? ' selected focus-ring-active' : '') + '" data-bucket="notYet">Starting today</button>' +
             '<button type="button" class="chip' + (beeState.startBucket === 'under1m' ? ' selected focus-ring-active' : '') + '" data-bucket="under1m">Past 2 weeks</button>' +
@@ -3708,7 +4006,7 @@ function initIntroAnimation() {
         '</div>' +
         '<div style="display:flex;justify-content:space-between;width:100%;margin-top:14px;">' +
           '<button type="button" class="btn btn-secondary btn-sm" id="bee-prev">Back</button>' +
-          '<button type="button" class="btn btn-primary btn-sm" id="bee-finish-routine">Build My Routine &rarr;</button>' +
+          '<button type="button" class="btn btn-primary btn-sm" id="bee-finish-routine">Submit &amp; build my routine &rarr;</button>' +
         '</div>' +
       '</div>';
     } else if (step === 4) {
@@ -3749,15 +4047,20 @@ function initIntroAnimation() {
     } else if (step === 1) {
       beeStageEl.querySelectorAll('[data-concern]').forEach(function (btn) {
         btn.addEventListener('click', function () {
-          beeState.concern = this.getAttribute('data-concern');
-          beeState.ownedProducts = [];
-          beeStageEl.querySelectorAll('[data-concern]').forEach(function (b) { b.classList.remove('selected'); });
-          this.classList.add('selected');
+          var v = this.getAttribute('data-concern');
+          var i = beeState.concerns.indexOf(v);
+          if (i >= 0) beeState.concerns.splice(i, 1); else beeState.concerns.push(v);
+          this.classList.toggle('selected', i < 0);
+          this.setAttribute('aria-pressed', String(i < 0));
+          var nb = beeStageEl.querySelector('#bee-next-focus');
+          if (nb) nb.disabled = !beeState.concerns.length;
         });
       });
       var nextFocusBtn = beeStageEl.querySelector('#bee-next-focus');
       if (nextFocusBtn) {
         nextFocusBtn.addEventListener('click', function () {
+          if (!beeState.concerns.length) return;
+          beeState.shelfIdx = 0;
           beeState.step = 2;
           renderBeeOnboarding();
         });
@@ -3785,14 +4088,16 @@ function initIntroAnimation() {
       var nextShelfBtn = beeStageEl.querySelector('#bee-next-shelf');
       if (nextShelfBtn) {
         nextShelfBtn.addEventListener('click', function () {
-          beeState.step = 3;
+          if (beeState.shelfIdx < beeState.concerns.length - 1) beeState.shelfIdx++;
+          else beeState.step = 3;
           renderBeeOnboarding();
         });
       }
       var backBtn2 = beeStageEl.querySelector('#bee-prev');
       if (backBtn2) {
         backBtn2.addEventListener('click', function () {
-          beeState.step = 1;
+          if (beeState.shelfIdx > 0) beeState.shelfIdx--;
+          else beeState.step = 1;
           renderBeeOnboarding();
         });
       }
@@ -3812,14 +4117,25 @@ function initIntroAnimation() {
       var finishBtn = beeStageEl.querySelector('#bee-finish-routine');
       if (finishBtn) {
         finishBtn.addEventListener('click', function () {
-          beeState.step = 4;
-          renderBeeOnboarding();
+          var profile = buildProfile({
+            name: beeState.name, concerns: beeState.concerns, ownedProducts: beeState.ownedProducts,
+            startBucket: beeState.startBucket, routineTime: beeState.routineTime
+          }, null);
+          Storage.save(profile);
+          renderAllSections();
+          startGlide(function () {
+            // Pink-edition hand-off: zoom straight from the logo into the chosen areas.
+            if (window.BodyMap && window.BodyMap.play) window.BodyMap.play(profile.concern);
+            else scrollToSection('today');
+            UI.toast('Welcome, ' + profile.name + '! Your routine is ready.');
+          });
         });
       }
       var backBtn3 = beeStageEl.querySelector('#bee-prev');
       if (backBtn3) {
         backBtn3.addEventListener('click', function () {
           beeState.step = 2;
+          beeState.shelfIdx = Math.max(0, beeState.concerns.length - 1);
           renderBeeOnboarding();
         });
       }
@@ -3828,7 +4144,7 @@ function initIntroAnimation() {
       if (enterBtn) {
         enterBtn.addEventListener('click', function () {
           var profile = buildProfile({
-            name: beeState.name, concern: beeState.concern, ownedProducts: beeState.ownedProducts,
+            name: beeState.name, concerns: beeState.concerns.length ? beeState.concerns : ['hair'], ownedProducts: beeState.ownedProducts,
             startBucket: beeState.startBucket, routineTime: beeState.routineTime
           }, null);
 
@@ -3836,12 +4152,9 @@ function initIntroAnimation() {
           renderAllSections();
 
           startGlide(function () {
-            if (window.BodyMap && window.BodyMap.play) {
-              // Zoom into the chosen region, then land on the daily check-in.
-              window.BodyMap.play(profile.concern);
-            } else {
-              scrollToSection('today');
-            }
+            // Pink-edition hand-off: zoom straight from the logo into the chosen areas.
+            if (window.BodyMap && window.BodyMap.play) window.BodyMap.play(profile.concern);
+            else scrollToSection('today');
             UI.toast('Welcome, ' + profile.name + '! Your routine is ready.');
           });
         });
@@ -3886,24 +4199,28 @@ function initIntroAnimation() {
       // First visit: play brand intro animation (7.4s) then BEE character steps forward for questionnaire
       introTimer = setTimeout(function () {
         renderBeeOnboarding();
-      }, 7400);
+      }, INTRO_DONE_MS);
     } else {
       // Returning user: play intro then glide into header logo
       glideTimer = setTimeout(function () {
         startGlide();
-      }, 7400);
+      }, INTRO_DONE_MS);
     }
   }
 
   window.replayIntro = function () {
     try { sessionStorage.removeItem('bwc_intro_seen'); } catch (e) {}
     beeState.step = 0;
+    beeState.concerns = [];
+    beeState.shelfIdx = 0;
     play();
   };
 
   window.replayIntroWithBee = function () {
     try { sessionStorage.removeItem('bwc_intro_seen'); } catch (e) {}
     beeState.step = 0;
+    beeState.concerns = [];
+    beeState.shelfIdx = 0;
     clearTimers();
     isGliding = false;
     if (headerIcon) {
@@ -3937,8 +4254,20 @@ function initIntroAnimation() {
 
     introTimer = setTimeout(function () {
       renderBeeOnboarding();
-    }, 7400);
+    }, INTRO_DONE_MS);
   };
+
+  // Allow clicking anywhere on the intro screen to advance immediately into onboarding
+  introEl.addEventListener('click', function (e) {
+    if (beeStageEl && beeStageEl.style.display !== 'none') return;
+    clearTimers();
+    var prof = Storage.load();
+    if (!prof) {
+      renderBeeOnboarding();
+    } else {
+      dismissIntro();
+    }
+  });
 
   if (skipBtn) {
     skipBtn.addEventListener('click', function () {
