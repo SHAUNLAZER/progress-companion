@@ -152,20 +152,11 @@ var Utils = {
     for (var i = 0; i < totalDays; i++) {
       var d = this.addDays(today, -i);
       var c = byDate[d];
-      if (c && c.done) {
-        var p = (typeof c.pct === 'number' && c.pct > 0) ? (c.pct / 100) : 1;
-        done += p;
-      } else if (c && c.ritualDone && c.ritualDone.length) {
-        var p = (typeof c.pct === 'number' && c.pct > 0) ? (c.pct / 100) : (c.ritualDone.length / 4);
-        done += p;
-      } else if ((c && c.rest) || this.isDateInPause(paused, d)) {
-        rest++;
-      }
+      if (c && c.done) done++;
+      else if ((c && c.rest) || this.isDateInPause(paused, d)) rest++;
     }
     var denom = Math.max(1, totalDays - rest);
-    var rawPct = done / denom;
-    var finalPct = (done > 0) ? Math.max(0.01, Math.min(1, rawPct)) : 0;
-    return { done: done, total: denom, rest: rest, pct: finalPct };
+    return { done: done, total: denom, rest: rest, pct: Math.min(1, done / denom) };
   },
 
   getStreak: function (checkins, paused) {
@@ -734,13 +725,8 @@ function getRitualSteps(profile) {
 
 // Percent of the day logged (0 when not submitted). Older full check-ins count as 100.
 function getDayPct(ci) {
-  if (!ci) return 0;
-  if (typeof ci.pct === 'number' && ci.pct > 0) return ci.pct;
-  if (ci.ritualDone && ci.ritualDone.length) {
-    var total = window.__ritualTotalSteps || 4;
-    return Math.min(100, Math.round((ci.ritualDone.length / total) * 100));
-  }
-  return ci.done ? 100 : 0;
+  if (!ci || !ci.done) return 0;
+  return typeof ci.pct === 'number' ? ci.pct : 100;
 }
 
 // Open the bathroom shelf for one concern directly (no name / focus questions).
@@ -859,12 +845,12 @@ function renderDotGrid(profile) {
   for (var d = 0; d < 7; d++) {
     var date = Utils.addDays(weekStart, d);
     var ci = Utils.getCheckinForDate(profile, date);
-    var pctD = getDayPct(ci);
-    var done = !!(ci && (ci.done || pctD > 0 || (ci.ritualDone && ci.ritualDone.length > 0)));
+    var done = ci && ci.done;
     var isToday = date === today;
     var daysSinceDate = Utils.daysBetween(date, today);
     var editable = daysSinceDate >= 0 && daysSinceDate <= 3 && date >= profile.startDate;
     var isFuture = date > today;
+    var pctD = getDayPct(ci);
     var cls = 'dot';
     if (done) cls += pctD < 100 ? ' partial' : ' done';
     if (isToday) cls += ' today';
@@ -886,10 +872,10 @@ function renderDotGrid(profile) {
         html += '<div class="dot" style="opacity:0.3;" title="' + dayLabels[dd] + '"></div>';
       } else {
         var ci2 = Utils.getCheckinForDate(profile, dt);
-        var p2 = getDayPct(ci2);
-        var dn = !!(ci2 && (ci2.done || p2 > 0 || (ci2.ritualDone && ci2.ritualDone.length > 0)));
+        var dn = ci2 && ci2.done;
         var daysBack = Utils.daysBetween(dt, today);
         var isBackfillable = daysBack >= 0 && daysBack <= 3;
+        var p2 = getDayPct(ci2);
         var dotCls = 'dot' + (dn ? (p2 < 100 ? ' partial' : ' done') : '') + (isBackfillable ? ' editable' : '');
         html += '<div class="' + dotCls + '"' + (dn ? ' style="--pct:' + p2 + '%"' : '') +
           (isBackfillable ? ' data-date="' + dt + '" tabindex="0" role="button" aria-label="' + dayLabels[dd] + ' ' + Utils.formatDate(dt) + (dn ? ' done' : ' not done') + '"' : '') +
@@ -1031,8 +1017,8 @@ function updateActiveNav(id) {
     if (target === id) {
       btn.classList.add('active');
       if (node) {
-        node.style.background = '#FF2A85';
-        node.style.borderColor = '#FF2A85';
+        node.style.background = '#0B5E9E';
+        node.style.borderColor = '#0B5E9E';
         node.style.transform = 'scale(1.25)';
       }
     } else {
@@ -1196,15 +1182,15 @@ function renderHeroSection(container) {
         '<p class="hero-subline">' + escHTML(c.subline || 'See real change, even when it is slow.') + '</p>' +
         '<div class="hero-benefits-grid">' +
           '<div class="benefit-pill">' +
-            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF2A85" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0B5E9E" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' +
             '<span>' + escHTML(c.benefits[0]) + '</span>' +
           '</div>' +
           '<div class="benefit-pill">' +
-            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF2A85" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0B5E9E" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' +
             '<span>' + escHTML(c.benefits[1]) + '</span>' +
           '</div>' +
           '<div class="benefit-pill">' +
-            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF2A85" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0B5E9E" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' +
             '<span>' + escHTML(c.benefits[2]) + '</span>' +
           '</div>' +
         '</div>' +
@@ -1232,14 +1218,14 @@ function renderHeroSection(container) {
               '<svg class="journey-svg" viewBox="0 0 380 140" fill="none">' +
                 '<defs>' +
                   '<linearGradient id="heroCurveGrad" x1="0" y1="0" x2="0" y2="1">' +
-                    '<stop offset="0%" stop-color="#FF2A85" stop-opacity="0.2"/>' +
-                    '<stop offset="100%" stop-color="#FF2A85" stop-opacity="0.0"/>' +
+                    '<stop offset="0%" stop-color="#0B5E9E" stop-opacity="0.2"/>' +
+                    '<stop offset="100%" stop-color="#0B5E9E" stop-opacity="0.0"/>' +
                   '</linearGradient>' +
                 '</defs>' +
                 '<path d="M 20 110 C 100 105, 180 85, 260 55 C 300 40, 340 35, 360 30 L 360 135 L 20 135 Z" fill="url(#heroCurveGrad)"/>' +
-                '<path class="signature-line" d="M 20 110 C 100 105, 180 85, 260 55 C 300 40, 340 35, 360 30" stroke="#FF2A85" stroke-width="4.5" stroke-linecap="round"/>' +
-                '<circle class="milestone-dot graph-interactive-dot active" data-node="1" cx="20" cy="110" r="7" fill="#FF2A85"/>' +
-                '<circle class="milestone-dot graph-interactive-dot" data-node="4" cx="180" cy="85" r="7" fill="#FF2A85"/>' +
+                '<path class="signature-line" d="M 20 110 C 100 105, 180 85, 260 55 C 300 40, 340 35, 360 30" stroke="#0B5E9E" stroke-width="4.5" stroke-linecap="round"/>' +
+                '<circle class="milestone-dot graph-interactive-dot active" data-node="1" cx="20" cy="110" r="7" fill="#0B5E9E"/>' +
+                '<circle class="milestone-dot graph-interactive-dot" data-node="4" cx="180" cy="85" r="7" fill="#0284c7"/>' +
                 '<circle class="milestone-dot graph-interactive-dot" data-node="12" cx="360" cy="30" r="8" fill="#F26B1D"/>' +
               '</svg>' +
               '<div class="journey-milestones-grid">' +
@@ -1338,28 +1324,28 @@ function renderHowSection(container) {
     var svgVisual = '';
     if (idx === 0) {
       svgVisual = '<svg width="64" height="64" viewBox="0 0 80 80" fill="none" style="margin-bottom:14px;">' +
-        '<circle cx="40" cy="40" r="34" stroke="var(--ob-hair, rgba(255,42,133,0.2))" stroke-width="6"/>' +
-        '<path d="M 18 52 C 28 50, 42 38, 62 24" stroke="#FF2A85" stroke-width="4" stroke-linecap="round"/>' +
+        '<circle cx="40" cy="40" r="34" stroke="#E6F2FC" stroke-width="6"/>' +
+        '<path d="M 18 52 C 28 50, 42 38, 62 24" stroke="#0B5E9E" stroke-width="4" stroke-linecap="round"/>' +
         '<circle cx="62" cy="24" r="6" fill="#F26B1D"/>' +
         '</svg>';
     } else if (idx === 1) {
       svgVisual = '<svg width="64" height="64" viewBox="0 0 80 80" fill="none" style="margin-bottom:14px;">' +
-        '<circle cx="40" cy="40" r="32" stroke="#FF2A85" stroke-width="5" stroke-linecap="round" stroke-dasharray="160" stroke-dashoffset="30"/>' +
-        '<circle cx="40" cy="40" r="22" stroke="#FF6BA6" stroke-width="5" stroke-linecap="round" stroke-dasharray="110" stroke-dashoffset="20"/>' +
-        '<circle cx="40" cy="40" r="12" stroke="#F26B1D" stroke-width="5" stroke-linecap="round" stroke-dasharray="60" stroke-dashoffset="0"/>' +
+        '<circle cx="40" cy="40" r="32" stroke="#1c4ed8" stroke-width="5" stroke-linecap="round" stroke-dasharray="160" stroke-dashoffset="30"/>' +
+        '<circle cx="40" cy="40" r="22" stroke="#0284c7" stroke-width="5" stroke-linecap="round" stroke-dasharray="110" stroke-dashoffset="20"/>' +
+        '<circle cx="40" cy="40" r="12" stroke="#0d9488" stroke-width="5" stroke-linecap="round" stroke-dasharray="60" stroke-dashoffset="0"/>' +
         '</svg>';
     } else {
       svgVisual = '<svg width="64" height="64" viewBox="0 0 80 80" fill="none" style="margin-bottom:14px;">' +
-        '<rect x="10" y="16" width="60" height="48" rx="8" fill="var(--ob-glass-hi, #FFF0F5)"/>' +
-        '<path d="M 14 54 C 28 50, 44 36, 66 26 L 66 38 C 44 48, 28 58, 14 60 Z" fill="var(--ob-hair, rgba(255,42,133,0.2))"/>' +
-        '<path d="M 14 56 C 28 52, 44 38, 66 28" stroke="#FF2A85" stroke-width="3.5" stroke-linecap="round"/>' +
+        '<rect x="10" y="16" width="60" height="48" rx="8" fill="#F0F6FC"/>' +
+        '<path d="M 14 54 C 28 50, 44 36, 66 26 L 66 38 C 44 48, 28 58, 14 60 Z" fill="#E6F2FC"/>' +
+        '<path d="M 14 56 C 28 52, 44 38, 66 28" stroke="#0B5E9E" stroke-width="3.5" stroke-linecap="round"/>' +
         '<circle cx="44" cy="38" r="4" fill="#F26B1D"/>' +
         '</svg>';
     }
 
     html += '<div class="how-panel" data-panel="' + idx + '">' +
       svgVisual +
-      '<div class="badge badge-pink mb-8">Step ' + escHTML(p.step) + '</div>' +
+      '<div class="badge badge-blue mb-8">Step ' + escHTML(p.step) + '</div>' +
       '<h3 class="card-title" style="font-size:1.25rem;margin-bottom:8px;">' + escHTML(p.title) + '</h3>' +
       '<p class="card-text" style="font-size:0.95rem;margin-bottom:10px;">' + escHTML(p.text) + '</p>' +
       '<p class="muted" style="font-size:0.84rem;">' + escHTML(p.detail) + '</p>' +
@@ -1383,8 +1369,8 @@ function renderSetupSection(container) {
       '<div class="section-header text-center">' +
         '<h2 class="section-title">Bathroom Shelf</h2>' +
         '<p class="section-subline">' + escHTML(getProfileConcerns(profile).map(function (c) { return Utils.getConcernConfig(c).label; }).join(' + ')) + ' routine · ' + pCount + ' active formula' + (pCount === 1 ? '' : 's') + '</p>' +
-        '<p class="official-shelf-sublink" style="font-size:0.88rem;color:#FF2A85;margin-top:6px;">' +
-          'Need to refill or explore actives? <a href="https://bebodywise.com" target="_blank" rel="noopener" class="store-link-accent" style="color:#FF2A85;font-weight:600;text-decoration:underline;">View full ingredients on Be Bodywise ↗</a>' +
+        '<p class="official-shelf-sublink" style="font-size:0.88rem;color:#0B5E9E;margin-top:6px;">' +
+          'Need to refill or explore actives? <a href="https://bebodywise.com" target="_blank" rel="noopener" class="store-link-accent" style="color:#0B5E9E;font-weight:600;text-decoration:underline;">View full ingredients on Be Bodywise ↗</a>' +
         '</p>' +
       '</div>' +
 
@@ -1392,7 +1378,7 @@ function renderSetupSection(container) {
         '<div class="shelf-active-list" style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px;">' +
           (profile.products || []).map(function (p) {
             return '<div class="shelf-active-item" style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;">' +
-              '<div class="shelf-item-icon" style="width:36px;height:36px;border-radius:8px;background:var(--ob-tint, rgba(255,42,133,0.15));display:flex;align-items:center;justify-content:center;color:#FF2A85;flex-shrink:0;">' +
+              '<div class="shelf-item-icon" style="width:36px;height:36px;border-radius:8px;background:#EBF4FC;display:flex;align-items:center;justify-content:center;color:#0B5E9E;flex-shrink:0;">' +
                 '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' +
               '</div>' +
               '<div class="shelf-item-details" style="flex:1;">' +
@@ -1508,7 +1494,7 @@ function renderDiscoveryCatalog(container) {
 
   discList.forEach(function (item) {
     html += '<div class="discovery-card">' +
-      '<div class="badge badge-pink mb-8">' + escHTML(item.concern) + '</div>' +
+      '<div class="badge badge-blue mb-8">' + escHTML(item.concern) + '</div>' +
       '<h3 class="card-title" style="font-size:1.15rem;margin-bottom:6px;">' + escHTML(item.product) + '</h3>' +
       '<p class="card-text mb-16" style="font-size:0.88rem;color:var(--text-secondary);">' + escHTML(item.benefit) + '</p>' +
       '<a href="' + escHTML(item.url) + '" target="_blank" rel="noopener" class="outbound-link-btn">' +
@@ -1518,7 +1504,7 @@ function renderDiscoveryCatalog(container) {
   });
 
   html += '</div>' +
-      '<div class="card text-center" style="padding:24px;background:var(--ob-tint, rgba(255,42,133,0.12));border:1.5px solid rgba(255,42,133,0.3);">' +
+      '<div class="card text-center" style="padding:24px;background:#F0F7FF;border:1.5px solid #BFDBFE;">' +
         '<h4 style="font-size:1.05rem;font-weight:700;color:var(--deep-navy);margin-bottom:6px;">Already placed an order?</h4>' +
         '<p class="card-text mb-14" style="font-size:0.9rem;">If your product is on the way, you can build your bathroom shelf now.</p>' +
         '<div style="display:flex;gap:12px;justify-content:center;">' +
@@ -1870,7 +1856,6 @@ function renderCheckinSection(container) {
   if (!concerns.length) concerns = ['wellness'];
   var activeTab = concerns.indexOf(window.__ritualTab) >= 0 ? window.__ritualTab : concerns[0];
   var allStepIds = steps.map(function (s) { return s.id; });
-  window.__ritualTotalSteps = allStepIds.length;
   var doneCount = allStepIds.filter(function (id) { return ritualDone.indexOf(id) >= 0; }).length;
   var dayPct = allStepIds.length ? Math.round(doneCount / allStepIds.length * 100) : 0;
   var isSubmitted = !!checkinToday.done;
@@ -1907,7 +1892,7 @@ function renderCheckinSection(container) {
         '<div class="card ritual-checklist-card">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
             '<h3 class="card-title" style="margin-bottom:0;">Your choice</h3>' +
-            '<span class="badge badge-pink">' + doneCount + '/' + allStepIds.length + ' done</span>' +
+            '<span class="badge badge-blue">' + doneCount + '/' + allStepIds.length + ' done</span>' +
           '</div>' +
           '<div class="choice-tabs" role="tablist" aria-label="Your chosen areas">';
   concerns.forEach(function (c) {
@@ -1945,14 +1930,14 @@ function renderCheckinSection(container) {
   }
 
   var ringFull = isCheckedIn || isRest;
-  var ringColor = isRest && !isCheckedIn ? '#FFB6C1' : '#FF2A85';
+  var ringColor = isRest && !isCheckedIn ? '#93C5FD' : '#0B5E9E';
   var ringInner;
   if (isCheckedIn) {
-    ringInner = '<path class="ring-check" d="M 60 92 L 80 112 L 122 70" stroke="#FF2A85" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>';
+    ringInner = '<path class="ring-check" d="M 60 92 L 80 112 L 122 70" stroke="#0B5E9E" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>';
   } else if (isRest) {
-    ringInner = '<text x="90" y="86" text-anchor="middle" font-family="Figtree, sans-serif" font-size="14" font-weight="600" fill="#6B7280">REST</text><text x="90" y="108" text-anchor="middle" font-family="Figtree, sans-serif" font-size="17" font-weight="700" fill="#FFFFFF">DAY</text>';
+    ringInner = '<text x="90" y="86" text-anchor="middle" font-family="Figtree, sans-serif" font-size="14" font-weight="600" fill="#6B7280">REST</text><text x="90" y="108" text-anchor="middle" font-family="Figtree, sans-serif" font-size="17" font-weight="700" fill="#0F2D5E">DAY</text>';
   } else {
-    ringInner = '<text x="90" y="86" text-anchor="middle" font-family="Figtree, sans-serif" font-size="14" font-weight="600" fill="#6B7280">TAP TO</text><text x="90" y="108" text-anchor="middle" font-family="Figtree, sans-serif" font-size="17" font-weight="700" fill="#FFFFFF">COMPLETE</text>';
+    ringInner = '<text x="90" y="86" text-anchor="middle" font-family="Figtree, sans-serif" font-size="14" font-weight="600" fill="#6B7280">TAP TO</text><text x="90" y="108" text-anchor="middle" font-family="Figtree, sans-serif" font-size="17" font-weight="700" fill="#0F2D5E">COMPLETE</text>';
   }
 
   var statusHeading = isCheckedIn ? 'Ritual complete today' : (isRest ? t.restDayTaken : 'Daily status');
@@ -1979,7 +1964,7 @@ function renderCheckinSection(container) {
         '<div class="card text-center" style="padding:28px 20px;">' +
           '<div class="ring-container mb-16" style="display:flex;justify-content:center;">' +
             '<svg class="checkin-ring' + (isCheckedIn ? ' done pulse' : '') + '" width="140" height="140" viewBox="0 0 180 180" id="ring-btn" role="button" tabindex="0" aria-pressed="' + isCheckedIn + '" aria-label="Toggle today\'s check-in" style="cursor:pointer;">' +
-              '<circle cx="90" cy="90" r="76" stroke="var(--ob-hair, rgba(255,42,133,0.2))" stroke-width="12" fill="none"/>' +
+              '<circle cx="90" cy="90" r="76" stroke="#E6F2FC" stroke-width="12" fill="none"/>' +
               '<circle class="ring-track" cx="90" cy="90" r="76" stroke="' + ringColor + '" stroke-width="12" fill="none" stroke-linecap="round" stroke-dasharray="477.5" stroke-dashoffset="' + (ringFull ? '0' : '477.5') + '" style="transition:stroke-dashoffset 0.6s var(--ease-out);"/>' +
               ringInner +
             '</svg>' +
@@ -2013,7 +1998,7 @@ function renderCheckinSection(container) {
     Storage.save(p);
     renderCheckinSection(container);
     refreshPrimaryCard();
-    refreshSections(['bodymap', 'results', 'nextstep']);
+    refreshSections(['results', 'nextstep']);
     if (focusSel) {
       var f = container.querySelector(focusSel);
       if (f && f.focus) f.focus();
@@ -2052,7 +2037,7 @@ function renderCheckinSection(container) {
       p.paused = null;
       Storage.save(p);
       renderCheckinSection(container);
-      refreshSections(['bodymap', 'results', 'nextstep']);
+      refreshSections(['results', 'nextstep']);
       UI.toast('Routine resumed');
     });
   }
@@ -2066,9 +2051,6 @@ function renderCheckinSection(container) {
         if (i >= 0) ci.ritualDone.splice(i, 1);
         else ci.ritualDone.push(stepId);
         if (ci.ritualDone.length) ci.rest = false;
-        var n = allStepIds.filter(function (id) { return ci.ritualDone.indexOf(id) >= 0; }).length;
-        ci.pct = allStepIds.length ? Math.round(n / allStepIds.length * 100) : 0;
-        ci.done = ci.pct > 0;
       }, null, '[data-step-id="' + stepId + '"]');
     });
   });
@@ -2406,7 +2388,7 @@ function renderMindSection(container) {
     '<div class="mind-space-grid">' +
       // 1. 60-Second Calm Breathing Pacer
       '<div class="breathing-card">' +
-        '<div class="badge badge-pink mb-8">Nervous system reset</div>' +
+        '<div class="badge badge-blue mb-8">Nervous system reset</div>' +
         '<h3 class="card-title" style="font-size:1.2rem;margin-bottom:4px;">' + escHTML(mind.breathing.title) + '</h3>' +
         '<p class="card-text mb-16" style="font-size:0.88rem;color:var(--text-secondary);">' + escHTML(mind.breathing.hint) + '</p>' +
 
@@ -2416,7 +2398,7 @@ function renderMindSection(container) {
             '<span id="breathing-label" style="font-weight:700;">Tap to start</span>' +
           '</div>' +
         '</div>' +
-        '<p id="breathing-toggle-text" style="font-size:0.84rem;color:var(--ob-pink, #FF2A85);margin-top:14px;font-weight:600;text-align:center;cursor:pointer;">Tap circle to start / pause</p>' +
+        '<p style="font-size:0.84rem;color:#0B5E9E;margin-top:14px;font-weight:600;text-align:center;">Tap circle to start / pause</p>' +
       '</div>' +
 
       // 2. Daily mindset (tap to shuffle)
@@ -2437,7 +2419,7 @@ function renderMindSection(container) {
           '<h3 class="card-title" style="font-size:1.1rem;margin-bottom:4px;">' + escHTML(mind.weather.title) + '</h3>' +
           '<p class="card-text" style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:0;">' + escHTML(mind.weather.subline) + '</p>' +
         '</div>' +
-        '<span class="badge badge-pink" id="mood-status-badge">' + (currentMood ? 'Logged: ' + escHTML(currentMood) : 'Not logged today') + '</span>' +
+        '<span class="badge badge-blue" id="mood-status-badge">' + (currentMood ? 'Logged: ' + escHTML(currentMood) : 'Not logged today') + '</span>' +
       '</div>' +
       '<div class="mood-selector-grid">';
 
@@ -2481,19 +2463,16 @@ function renderMindSection(container) {
   var breathTimer = null;
   var coreEl = container.querySelector('#breathing-core');
   var labelEl = container.querySelector('#breathing-label');
-  var hintText = container.querySelector('#breathing-toggle-text');
   var btnBreathing = document.getElementById('btn-toggle-breathing');
 
   function toggleBreathing() {
     isBreathingActive = !isBreathingActive;
     if (isBreathingActive) {
       if (btnBreathing) btnBreathing.textContent = mind.breathing.btnPause;
-      if (hintText) hintText.textContent = 'Tap circle to pause';
       runBreathCycle();
     } else {
       clearTimeout(breathTimer);
       if (btnBreathing) btnBreathing.textContent = mind.breathing.btnStart;
-      if (hintText) hintText.textContent = 'Tap circle to start';
       if (coreEl) coreEl.className = 'breathing-circle-core';
       if (labelEl) labelEl.textContent = 'Tap to start';
     }
@@ -2507,9 +2486,6 @@ function renderMindSection(container) {
         toggleBreathing();
       }
     });
-  }
-  if (hintText) {
-    hintText.addEventListener('click', toggleBreathing);
   }
 
   function runBreathCycle() {
@@ -2609,68 +2585,45 @@ function renderResultsSection(container) {
     '<div class="results-bento-grid">' +
       // Card 1: 28-day consistency dial
       '<div class="results-bento-card results-bento-span-5">' +
-        '<div class="badge mb-12" style="background:var(--ob-tint, rgba(255,42,133,0.18));color:var(--ob-pink, #FF2A85);border:1px solid var(--ob-hair, rgba(255,42,133,0.3));font-weight:700;">Consistency</div>' +
+        '<div class="badge badge-blue mb-12">Consistency</div>' +
         '<div class="results-score-dial-wrap">' +
           '<svg class="results-score-dial-svg" viewBox="0 0 100 100" aria-hidden="true">' +
-            '<circle class="results-score-dial-bg" cx="50" cy="50" r="38" stroke="var(--ob-hair, rgba(255,42,133,0.2))" fill="none" />' +
-            '<circle class="results-score-dial-val" cx="50" cy="50" r="38" stroke="var(--ob-pink, #FF2A85)" fill="none" stroke-linecap="round" stroke-dasharray="' + circ + '" stroke-dashoffset="' + dashoffset + '" />' +
+            '<circle class="results-score-dial-bg" cx="50" cy="50" r="38" />' +
+            '<circle class="results-score-dial-val" cx="50" cy="50" r="38" stroke-dasharray="' + circ + '" stroke-dashoffset="' + dashoffset + '" />' +
           '</svg>' +
           '<div>' +
-            '<div style="font-size:2rem;font-weight:800;color:var(--ob-head, #FFFFFF);line-height:1;">' + consistencyPct + '%</div>' +
-            '<div style="font-size:0.86rem;color:var(--ob-label, #FFD1DC);margin-top:4px;">' + escHTML(CONTENT.rings.consistency) + '</div>' +
+            '<div style="font-size:2rem;font-weight:800;color:#0F2D5E;line-height:1;">' + consistencyPct + '%</div>' +
+            '<div style="font-size:0.86rem;color:#64748B;margin-top:4px;">' + escHTML(CONTENT.rings.consistency) + '</div>' +
             '<div style="margin-top:8px;">' +
-              '<span class="results-delta-pill" style="background:var(--ob-tint, rgba(255,42,133,0.2));color:var(--ob-pink, #FF2A85);font-weight:700;">' +
+              '<span class="results-delta-pill ' + (consistencyPct >= 70 ? 'positive' : 'neutral') + '">' +
                 (consistencyPct >= 70 ? '&#9650; Steady pace' : '&#9644; Building momentum') +
               '</span>' +
             '</div>' +
           '</div>' +
         '</div>' +
-        '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--ob-hair, rgba(255,42,133,0.25));display:flex;justify-content:space-between;font-size:0.86rem;">' +
-          '<span style="color:var(--ob-body, #FFEBF2);">Current streak:</span>' +
-          '<strong style="color:var(--ob-pink, #FF2A85);">' + streakDays + (streakDays === 1 ? ' day' : ' days') + '</strong>' +
-        '</div>' +
-      '</div>' +
-        '</div>' +
         '<div style="margin-top:18px;padding-top:14px;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between;font-size:0.86rem;">' +
           '<span style="color:#64748B;">Current streak:</span>' +
-          '<strong style="color:#FF2A85;">' + streakDays + (streakDays === 1 ? ' day' : ' days') + '</strong>' +
+          '<strong style="color:#0B5E9E;">' + streakDays + (streakDays === 1 ? ' day' : ' days') + '</strong>' +
         '</div>' +
       '</div>' +
 
       // Card 2: verdict
       '<div class="results-bento-card results-bento-span-7 ' + escHTML(verdict.cssClass) + '">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
-          '<div class="badge mb-0" style="background:var(--ob-tint, rgba(255,42,133,0.18));color:var(--ob-pink, #FF2A85);font-weight:700;">Verdict</div>' +
-          '<span class="badge" style="background:var(--ob-tint, rgba(255,42,133,0.15));color:var(--ob-pink, #FF2A85);font-size:0.82rem;font-weight:600;padding:3px 10px;">' + (currentWk >= cfg.fullWindowWeeks ? 'Full window reached' : 'Week ' + currentWk + ' of ' + cfg.fullWindowWeeks) + '</span>' +
+          '<div class="badge mb-0" style="background:#FFFFFF;font-weight:700;">' + escHTML(verdict.label) + '</div>' +
+          '<span style="font-size:0.82rem;font-weight:600;color:#0B5E9E;">Where you are</span>' +
         '</div>' +
-        '<h3 class="card-title" style="font-size:1.2rem;margin-bottom:6px;color:var(--ob-head, #FFFFFF);">' + escHTML(verdict.label) + '</h3>' +
-        '<p class="card-text mb-12" style="font-size:0.92rem;line-height:1.5;color:var(--ob-body, #FFEBF2);">' + escHTML(verdict.message) + '</p>' +
-        '<div class="results-horizon-track" style="background:var(--ob-glass-hi, rgba(255,255,255,0.08));border-radius:999px;height:8px;overflow:hidden;margin:12px 0 6px 0;">' +
-          '<div class="results-horizon-fill" style="width:' + (function() {
-            var completedWeeksCount = 0;
-            if (profile.checkins && profile.checkins.length) {
-              var wkMap = {};
-              profile.checkins.forEach(function (c) {
-                if (c.done) {
-                  var diffDays = Utils.daysBetween(profile.startDate, c.date);
-                  var w = Math.max(1, Math.floor(diffDays / 7) + 1);
-                  wkMap[w] = (wkMap[w] || 0) + 1;
-                }
-              });
-              completedWeeksCount = Object.keys(wkMap).length;
-            }
-            if (profile.weeklyRatings && profile.weeklyRatings.length) {
-              completedWeeksCount = Math.max(completedWeeksCount, profile.weeklyRatings.length);
-            }
-            return Math.min(100, Math.round((completedWeeksCount / cfg.fullWindowWeeks) * 100));
-          })() + '%;background:linear-gradient(90deg, #FF2A85 0%, #FF66B2 100%);height:100%;border-radius:999px;transition:width 0.8s ease;"></div>' +
+        '<h3 class="card-title" style="font-size:1.2rem;margin-bottom:6px;">' + escHTML(verdict.label) + '</h3>' +
+        '<p class="card-text mb-12" style="font-size:0.92rem;line-height:1.5;">' + escHTML(verdict.message) + '</p>' +
+        '<div class="results-horizon-track">' +
+          '<div class="results-horizon-fill" style="width:' + Math.min(100, Math.round((currentWk / cfg.fullWindowWeeks) * 100)) + '%;"></div>' +
         '</div>' +
-        '<div style="display:flex;justify-content:space-between;font-size:0.78rem;color:var(--ob-label, #FFD1DC);margin-bottom:12px;">' +
-          '<span>Week 1 (Start)</span>' +
-          '<span>Week ' + cfg.earlyWindowWeeks + ' (Early shifts)</span>' +
-          '<span>Week ' + cfg.fullWindowWeeks + ' (Real change)</span>' +
+        '<div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#64748B;margin-bottom:12px;">' +
+          '<span>Week 1</span>' +
+          '<span>Week ' + cfg.earlyWindowWeeks + ' (early shifts)</span>' +
+          '<span>Week ' + cfg.fullWindowWeeks + ' (real change)</span>' +
         '</div>' +
-        '<ul style="margin:0;padding-left:18px;font-size:0.85rem;color:var(--ob-body, #FFEBF2);">' +
+        '<ul style="margin:0;padding-left:18px;font-size:0.85rem;color:#475569;">' +
           verdict.reasons.map(function (r) { return '<li>' + escHTML(r) + '</li>'; }).join('') +
         '</ul>' +
       '</div>' +
@@ -2692,22 +2645,18 @@ function renderResultsSection(container) {
         '<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:12px;">';
 
   markersList.forEach(function (m) {
-    html += '<button type="button" class="results-matrix-row marker-card-btn" data-marker-click="' + escHTML(m.id) + '" style="cursor:pointer;text-align:left;width:100%;background:var(--ob-glass-hi, rgba(255,255,255,0.06));border:1.5px solid var(--ob-hair, rgba(255,42,133,0.3));border-radius:14px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;transition:all 0.2s ease;">' +
+    html += '<div class="results-matrix-row">' +
       '<div style="flex:1;">' +
-        '<div style="font-weight:700;color:var(--ob-head, #FFFFFF);font-size:0.95rem;display:flex;align-items:center;gap:8px;">' +
-          '<span>' + escHTML(m.name) + '</span>' +
-          '<span class="badge" style="background:var(--ob-tint, rgba(255,42,133,0.18));color:var(--ob-pink, #FF2A85);font-size:0.72rem;padding:2px 8px;border:1px solid var(--ob-hair, rgba(255,42,133,0.3));">Tap to review</span>' +
-        '</div>' +
-        '<div style="font-size:0.82rem;color:var(--ob-label, #FFD1DC);margin-top:4px;">' + escHTML(m.hint) + '</div>' +
+        '<div style="font-weight:700;color:#0F2D5E;font-size:0.92rem;">' + escHTML(m.name) + '</div>' +
+        '<div style="font-size:0.8rem;color:#64748B;margin-top:2px;">' + escHTML(m.hint) + '</div>' +
       '</div>' +
-      '<span style="color:var(--ob-pink, #FF2A85);font-weight:700;font-size:1.1rem;">&rarr;</span>' +
-    '</button>';
+    '</div>';
   });
 
   html += '</div>';
 
   html += '<div class="review-history" style="margin-top:18px;padding-top:14px;border-top:1px solid #E2E8F0;">' +
-    '<h4 style="font-size:0.95rem;font-weight:700;color:#FFFFFF;margin-bottom:8px;">Your weekly reviews</h4>';
+    '<h4 style="font-size:0.95rem;font-weight:700;color:#0F2D5E;margin-bottom:8px;">Your weekly reviews</h4>';
   if (ratings.length) {
     html += '<ul style="margin:0;padding-left:18px;font-size:0.86rem;color:#475569;">';
     ratings.forEach(function (r) {
@@ -2722,7 +2671,7 @@ function renderResultsSection(container) {
   html +=
       // Card 4: supply
       '<div class="results-bento-card results-bento-span-6">' +
-        '<div class="badge badge-pink mb-10">Formula supply</div>' +
+        '<div class="badge badge-blue mb-10">Formula supply</div>' +
         '<h3 class="card-title" style="font-size:1.05rem;margin-bottom:8px;">Your shelf</h3>' +
         '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">' +
           (profile.products || []).map(function (prod) {
@@ -2730,7 +2679,7 @@ function renderResultsSection(container) {
             var statusStr = (daysLeft !== null) ? (daysLeft > 0 ? (daysLeft + ' days left') : 'Refill due') : '30-day cycle';
             return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0;font-size:0.86rem;">' +
               '<span style="font-weight:600;color:#0F172A;">' + escHTML(prod.name) + '</span>' +
-              '<span style="font-weight:700;color:#FF2A85;">' + statusStr + '</span>' +
+              '<span style="font-weight:700;color:#0B5E9E;">' + statusStr + '</span>' +
             '</div>';
           }).join('') +
         '</div>' +
@@ -2741,14 +2690,14 @@ function renderResultsSection(container) {
 
       // Card 5: reassurance
       '<div class="results-bento-card results-bento-span-6">' +
-        '<div class="badge badge-pink mb-10">Good to know</div>' +
+        '<div class="badge badge-blue mb-10">Good to know</div>' +
         '<h3 class="card-title" style="font-size:1.05rem;margin-bottom:6px;">Quiet, compounding care</h3>' +
         '<p class="card-text mb-12" style="font-size:0.88rem;color:#475569;line-height:1.5;">' +
           'Surface changes follow weeks of work under the skin and scalp. Daily care adds up before the mirror shows it.' +
         '</p>' +
-        '<div style="background:var(--ob-tint, rgba(255,42,133,0.12));padding:12px 14px;border-radius:12px;border:1px solid rgba(255,42,133,0.3);">' +
-          '<div style="font-weight:700;color:#FF2A85;font-size:0.84rem;margin-bottom:2px;">Tip for week ' + currentWk + '</div>' +
-          '<div style="font-size:0.82rem;color:#FFFFFF;">Judge a routine over several weeks of steady use, not a few days.</div>' +
+        '<div style="background:#EFF6FF;padding:12px 14px;border-radius:12px;border:1px solid #BFDBFE;">' +
+          '<div style="font-weight:700;color:#1E40AF;font-size:0.84rem;margin-bottom:2px;">Tip for week ' + currentWk + '</div>' +
+          '<div style="font-size:0.82rem;color:#1E3A8A;">Judge a routine over several weeks of steady use, not a few days.</div>' +
         '</div>' +
       '</div>' +
 
@@ -2762,12 +2711,6 @@ function renderResultsSection(container) {
   if (logBtn) logBtn.addEventListener('click', function () { openWeeklyReviewDrawer(); });
   var recapBtn = container.querySelector('#btn-open-recap');
   if (recapBtn) recapBtn.addEventListener('click', function () { openRecapDrawer(); });
-  container.querySelectorAll('[data-marker-click]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var mId = btn.getAttribute('data-marker-click');
-      openSingleMarkerReviewModal(mId);
-    });
-  });
 }
 
 
@@ -2796,7 +2739,7 @@ function renderNextStepSection(container) {
               'Used ' + burnRate.usedDoses + ' of ' + burnRate.totalDoses + ' doses (' + burnRate.remainingDoses + ' remaining)' +
             '</p>' +
           '</div>' +
-          (burnRate.isLow ? '<span class="badge" style="background:#FEF2F2;color:#991B1B;font-weight:700;">Reorder soon</span>' : '<span class="badge badge-pink">Stock healthy</span>') +
+          (burnRate.isLow ? '<span class="badge" style="background:#FEF2F2;color:#991B1B;font-weight:700;">Reorder soon</span>' : '<span class="badge badge-blue">Stock healthy</span>') +
         '</div>' +
         '<div class="burn-rate-meter" role="img" aria-label="' + burnRate.pctUsed + ' percent used">' +
           '<div class="burn-rate-fill" style="width:' + burnRate.pctUsed + '%;"></div>' +
@@ -2997,7 +2940,7 @@ function openChatbotDrawer(initialTopicId) {
 
             '<div class="answer-card answer-science">' +
               '<div class="answer-card-header">' +
-                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FF2A85" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0B5E9E" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>' +
                 '<span>The Science (Biology)</span>' +
               '</div>' +
               '<p class="answer-card-text">' + scienceHtml + '</p>' +
@@ -3057,88 +3000,6 @@ function openChatbotDrawer(initialTopicId) {
 
 // 2. Settings & Menu Drawer with In-Drawer Reset Confirmation
 /* ---- Weekly review drawer ---- */
-
-/* ---- Single Marker Review Modal with Save Review ---- */
-function openSingleMarkerReviewModal(targetMarkerId) {
-  var profile = Storage.load();
-  if (!profile) return;
-  var currentWk = Utils.getWeekNumber(profile.startDate);
-  var markersList = (CONTENT.microMarkers && CONTENT.microMarkers[profile.concern]) || [];
-  var marker = markersList.find(function (m) { return m.id === targetMarkerId; }) || markersList[0];
-  if (!marker) { openWeeklyReviewDrawer(); return; }
-
-  var html = '<form id="marker-review-form" novalidate style="display:flex;flex-direction:column;gap:16px;">' +
-    '<div class="callout mb-12" style="background:var(--ob-tint, rgba(255,42,133,0.15));border:1.5px solid var(--ob-hair, rgba(255,42,133,0.3));border-radius:14px;padding:14px 16px;">' +
-      '<h4 style="font-size:1.05rem;font-weight:700;color:var(--ob-head, #FFFFFF);margin:0 0 4px 0;">' + escHTML(marker.name) + '</h4>' +
-      '<p style="font-size:0.86rem;color:var(--ob-body, #FFEBF2);margin:0;">' + escHTML(marker.hint) + '</p>' +
-    '</div>' +
-    '<div class="field">' +
-      '<label style="font-weight:700;color:var(--ob-head, #FFFFFF);display:block;margin-bottom:8px;">What did you observe this week?</label>' +
-      '<div class="chip-group" data-marker-field="' + escHTML(marker.id) + '" role="radiogroup" style="display:flex;flex-direction:column;gap:8px;">' +
-        marker.options.map(function (opt) {
-          return '<button type="button" class="chip marker-opt-chip" role="radio" aria-checked="false" data-score="' + opt.score + '" style="cursor:pointer;padding:12px 14px;text-align:left;background:var(--ob-glass-hi);border:1.5px solid var(--ob-hair);border-radius:10px;color:var(--ob-body);font-weight:600;font-size:0.9rem;">' + escHTML(opt.label) + '</button>';
-        }).join('') +
-      '</div>' +
-    '</div>' +
-    '<div class="field">' +
-      '<label style="font-weight:700;color:var(--ob-head, #FFFFFF);display:block;margin-bottom:8px;">Overall feeling for week ' + currentWk + ' (1 to 5):</label>' +
-      UI.ratingHTML('marker-overall', '', 4) +
-    '</div>' +
-    '<button type="submit" class="btn btn-primary btn-full mt-12" id="btn-save-single-marker" disabled style="background:#FF2A85;color:#FFFFFF;padding:14px;font-size:1rem;font-weight:700;border-radius:999px;cursor:pointer;">Save review &rarr;</button>' +
-  '</form>';
-
-  Drawer.open(marker.name + ' · Week ' + currentWk, html, function (panelEl) {
-    var scoreVal = 0;
-    var overallRating = 4;
-    var submitBtn = panelEl.querySelector('#btn-save-single-marker');
-
-    panelEl.querySelectorAll('.marker-opt-chip').forEach(function (chip) {
-      chip.addEventListener('click', function () {
-        panelEl.querySelectorAll('.marker-opt-chip').forEach(function (c) {
-          c.classList.remove('selected');
-          c.style.background = 'var(--ob-glass-hi)';
-          c.style.borderColor = 'var(--ob-hair)';
-          c.style.color = 'var(--ob-body)';
-        });
-        chip.classList.add('selected');
-        chip.style.background = '#FF2A85';
-        chip.style.borderColor = '#FF66B2';
-        chip.style.color = '#FFFFFF';
-        scoreVal = Number(chip.getAttribute('data-score')) || 3;
-        if (submitBtn) submitBtn.disabled = false;
-      });
-    });
-
-    UI.bindRating('marker-overall', function (v) { overallRating = v; });
-
-    var formEl = panelEl.querySelector('#marker-review-form');
-    if (formEl) {
-      formEl.addEventListener('submit', function (e) {
-        e.preventDefault();
-        if (!scoreVal) return;
-        var prof = Storage.load();
-        if (!prof) return;
-        prof.weeklyRatings = prof.weeklyRatings || [];
-        var existingIdx = prof.weeklyRatings.findIndex(function (r) { return r.week === currentWk; });
-        var newRating = {
-          week: currentWk,
-          primary: scoreVal,
-          secondary: overallRating,
-          unusual: false,
-          date: Utils.getToday(),
-          markerName: marker.name
-        };
-        if (existingIdx >= 0) prof.weeklyRatings[existingIdx] = newRating;
-        else prof.weeklyRatings.push(newRating);
-        Storage.save(prof);
-        Drawer.close();
-        refreshSections(['results', 'nextstep']);
-        UI.toast('Review saved for ' + marker.name);
-      });
-    }
-  });
-}
-
 function openWeeklyReviewDrawer() {
   var profile = Storage.load();
   if (!profile) { Router.navigate('#/start'); return; }
@@ -3248,7 +3109,7 @@ function openWeeklyReviewDrawer() {
       Storage.save(fresh);
 
       Drawer.close();
-      refreshSections(['bodymap', 'results', 'nextstep']);
+      refreshSections(['results', 'nextstep']);
       refreshPrimaryCard();
       UI.toast('Weekly review saved. Verdict updated.');
     });
@@ -3800,7 +3661,7 @@ function initIntroAnimation() {
   };
 
   // Head finishes drawing at 7.7s; wait 1s more so the full logo is seen.
-  var INTRO_DONE_MS = 4200;
+  var INTRO_DONE_MS = 8700;
   var introTimer = null;
   var glideTimer = null;
   var landTimer = null;
@@ -3821,7 +3682,6 @@ function initIntroAnimation() {
     introEl.classList.remove('playing', 'fading');
     introEl.classList.add('dismissed');
     introEl.setAttribute('aria-hidden', 'true');
-    introEl.style.display = 'none';
     document.body.style.overflow = '';
   }
 
@@ -3931,10 +3791,7 @@ function initIntroAnimation() {
           CONTENT.quiz.concerns.map(function (c) {
             var isSel = beeState.concerns.indexOf(c.value) >= 0;
             return '<button type="button" class="bee-choice-btn' + (isSel ? ' selected' : '') + '" data-concern="' + c.value + '" aria-pressed="' + isSel + '">' +
-              '<div style="display:flex;justify-content:space-between;align-items:center;width:100%;">' +
-                '<span class="bee-choice-title">' + escHTML(c.label) + '</span>' +
-                (isSel ? '<span class="bee-choice-check-badge" style="background:#FFFFFF;color:#FF2A85;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.8rem;box-shadow:0 2px 6px rgba(0,0,0,0.3);">✓</span>' : '') +
-              '</div>' +
+              '<span class="bee-choice-title">' + escHTML(c.label) + '</span>' +
             '</button>';
           }).join('') +
         '</div>' +
@@ -3965,9 +3822,9 @@ function initIntroAnimation() {
         '<div style="display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;max-height:200px;overflow-y:auto;padding:2px;">' +
           catalog.map(function (p) {
             var isChk = (beeState.ownedProducts.indexOf(p.id) >= 0);
-            return '<div class="shelf-product-item' + (isChk ? ' selected focus-ring-active' : '') + '" data-prod-id="' + p.id + '" style="cursor:pointer;padding:12px 14px;background:var(--ob-glass-hi, rgba(255,255,255,0.06));border:1.5px solid ' + (isChk ? '#FF2A85' : 'var(--ob-hair, rgba(255,42,133,0.3))') + ';border-radius:12px;display:flex;align-items:center;gap:12px;transition:all 0.2s ease;">' +
-              '<div class="shelf-checkbox" style="width:22px;height:22px;border-radius:6px;border:1.5px solid ' + (isChk ? '#FF2A85' : 'var(--ob-hair, #884466)') + ';background:' + (isChk ? '#FF2A85' : 'transparent') + ';display:flex;align-items:center;justify-content:center;color:#FFFFFF;flex-shrink:0;">' + (isChk ? ICONS.check : '') + '</div>' +
-              '<span style="font-size:0.92rem;font-weight:600;color:' + (isChk ? '#FFFFFF' : '#FFEBF2') + ';">' + escHTML(p.name) + '</span>' +
+            return '<div class="shelf-product-item' + (isChk ? ' selected focus-ring-active' : '') + '" data-prod-id="' + p.id + '" style="cursor:pointer;padding:10px 14px;background:#F8FAFC;border:1.5px solid ' + (isChk ? '#0B5E9E' : '#E2E8F0') + ';border-radius:12px;display:flex;align-items:center;gap:10px;">' +
+              '<div class="shelf-checkbox" style="width:20px;height:20px;border-radius:6px;border:1.5px solid ' + (isChk ? '#0B5E9E' : '#CBD5E1') + ';background:' + (isChk ? '#0B5E9E' : '#FFFFFF') + ';display:flex;align-items:center;justify-content:center;color:#FFFFFF;">' + (isChk ? ICONS.check : '') + '</div>' +
+              '<span style="font-size:0.9rem;font-weight:600;color:#0F2D5E;">' + escHTML(p.name) + '</span>' +
             '</div>';
           }).join('') +
         '</div>' +
@@ -3991,13 +3848,13 @@ function initIntroAnimation() {
           '<p class="bee-greeting-sub">Realistic routines build quiet daily momentum.</p>' +
         '</div>' +
         '<div style="width:100%;text-align:left;">' +
-          '<div style="font-size:0.85rem;font-weight:700;color:#FFFFFF;margin-bottom:8px;">Preferred daily time:</div>' +
+          '<div style="font-size:0.85rem;font-weight:700;color:#0F2D5E;margin-bottom:8px;">Preferred daily time:</div>' +
           '<div class="chip-group mb-16" style="display:flex;gap:8px;">' +
             '<button type="button" class="chip' + (beeState.routineTime === 'morning' ? ' selected focus-ring-active' : '') + '" data-time="morning">Morning only</button>' +
             '<button type="button" class="chip' + (beeState.routineTime === 'night' ? ' selected focus-ring-active' : '') + '" data-time="night">Night only</button>' +
             '<button type="button" class="chip' + (beeState.routineTime === 'both' ? ' selected focus-ring-active' : '') + '" data-time="both">Both AM & PM</button>' +
           '</div>' +
-          '<div style="font-size:0.85rem;font-weight:700;color:#FFFFFF;margin-bottom:8px;">When did you start:</div>' +
+          '<div style="font-size:0.85rem;font-weight:700;color:#0F2D5E;margin-bottom:8px;">When did you start:</div>' +
           '<div class="chip-group" style="display:flex;gap:8px;">' +
             '<button type="button" class="chip' + (beeState.startBucket === 'notYet' ? ' selected focus-ring-active' : '') + '" data-bucket="notYet">Starting today</button>' +
             '<button type="button" class="chip' + (beeState.startBucket === 'under1m' ? ' selected focus-ring-active' : '') + '" data-bucket="under1m">Past 2 weeks</button>' +
@@ -4256,18 +4113,6 @@ function initIntroAnimation() {
       renderBeeOnboarding();
     }, INTRO_DONE_MS);
   };
-
-  // Allow clicking anywhere on the intro screen to advance immediately into onboarding
-  introEl.addEventListener('click', function (e) {
-    if (beeStageEl && beeStageEl.style.display !== 'none') return;
-    clearTimers();
-    var prof = Storage.load();
-    if (!prof) {
-      renderBeeOnboarding();
-    } else {
-      dismissIntro();
-    }
-  });
 
   if (skipBtn) {
     skipBtn.addEventListener('click', function () {

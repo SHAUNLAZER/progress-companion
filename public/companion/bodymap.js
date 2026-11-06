@@ -137,7 +137,7 @@
         '" data-region="' + r.id + '">' +
         '<span class="bm-legend-dot"></span>' +
         '<span class="bm-legend-label">' + esc(labelFor(r.id)) + '</span>' +
-        '<span class="bm-legend-meta">' + (st.active ? (st.pct > 0 ? Math.max(1, Math.round(st.pct * 100)) : 0) + '% this month' : 'Not tracking') + '</span>' +
+        '<span class="bm-legend-meta">' + (st.active ? Math.round(st.pct * 100) + '% this month' : 'Not tracking') + '</span>' +
       '</button></li>';
     });
 
@@ -177,7 +177,7 @@
     var cfg = (root.Utils && root.Utils.getConcernConfig) ? root.Utils.getConcernConfig(id) : {};
     var label = labelFor(id);
     if (st.active) {
-      var pct = st.pct > 0 ? Math.max(1, Math.round(st.pct * 100)) : 0;
+      var pct = Math.round(st.pct * 100);
       return '<div class="bm-clean-card" role="document">' +
         '<div class="bm-eyebrow">' + esc(label.toUpperCase()) + '</div>' +
         '<div class="bm-big-ring" aria-hidden="true">' +

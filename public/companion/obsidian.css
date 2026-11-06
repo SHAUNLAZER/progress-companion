@@ -1,22 +1,22 @@
 /* Presentation-only pink themes. Original style.css owns transitions. */
 :root {
   color-scheme: dark;
-  --ob-bg-0: oklch(0.12 0.016 345);
-  --ob-bg-1: oklch(0.16 0.025 345);
-  --ob-glass: oklch(0.19 0.028 345);
-  --ob-glass-hi: oklch(0.24 0.038 345);
-  --ob-hair: oklch(0.36 0.045 345);
-  --ob-head: #FFFFFF;
-  --ob-body: #FFEBF2;
-  --ob-label: #FFD1DC;
-  --ob-pink: #FF2A85;
-  --ob-hot: #FF1493;
-  --ob-soft: #FFB6C1;
-  --ob-ink: #FFFFFF;
-  --ob-tint: oklch(0.28 0.12 345);
-  --ob-shadow: rgba(0, 0, 0, 0.45);
-  --ob-overlay: rgba(10, 4, 8, 0.8);
-  --ob-prism: linear-gradient(120deg, #FF2A85, #FF1493);
+  --ob-bg-0: oklch(0.14 0.014 345);
+  --ob-bg-1: oklch(0.18 0.023 345);
+  --ob-glass: oklch(0.205 0.024 345);
+  --ob-glass-hi: oklch(0.25 0.038 345);
+  --ob-hair: oklch(0.36 0.038 345);
+  --ob-head: oklch(0.95 0.018 345);
+  --ob-body: oklch(0.78 0.028 345);
+  --ob-label: oklch(0.69 0.037 345);
+  --ob-pink: oklch(0.76 0.22 345);
+  --ob-hot: oklch(0.69 0.27 350);
+  --ob-soft: oklch(0.84 0.105 345);
+  --ob-ink: oklch(0.16 0.035 345);
+  --ob-tint: oklch(0.30 0.07 345);
+  --ob-shadow: oklch(0.08 0.02 345 / 0.3);
+  --ob-overlay: oklch(0.1 0.02 345 / 0.7);
+  --ob-prism: linear-gradient(120deg, var(--ob-pink), var(--ob-hot));
   --primary-blue: var(--ob-pink);
   --deep-navy: var(--ob-head);
   --pale-blue: var(--ob-tint);
@@ -41,21 +41,21 @@
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --ob-bg-0: #FFF0F5; /* light pink background */
-  --ob-bg-1: #FFE4E1;
-  --ob-glass: #7A0C43; /* dark fluorescent pink center */
-  --ob-glass-hi: #8D1250; /* slightly brighter dark fluorescent pink */
-  --ob-hair: #A82065; /* border */
-  --ob-head: #FFFFFF; /* white text on dark center */
-  --ob-body: #FFEBF2; /* very light pink text */
-  --ob-label: #FFD1DC; /* light pink label */
-  --ob-pink: #FF2A85; /* electric bright fluorescent pink */
-  --ob-hot: #FF007F; /* vivid hot pink */
-  --ob-soft: #FFB6C1;
-  --ob-ink: #FFFFFF;
-  --ob-tint: #5C0832; /* deep plum pink */
-  --ob-shadow: rgba(122, 12, 67, 0.25);
-  --ob-overlay: rgba(40, 5, 22, 0.65);
+  --ob-bg-0: oklch(0.975 0.012 345);
+  --ob-bg-1: oklch(0.95 0.023 345);
+  --ob-glass: oklch(0.995 0.004 345);
+  --ob-glass-hi: oklch(0.94 0.035 345);
+  --ob-hair: oklch(0.86 0.042 345);
+  --ob-head: oklch(0.28 0.066 345);
+  --ob-body: oklch(0.43 0.045 345);
+  --ob-label: oklch(0.50 0.044 345);
+  --ob-pink: oklch(0.50 0.21 345);
+  --ob-hot: oklch(0.58 0.25 350);
+  --ob-soft: oklch(0.48 0.145 345);
+  --ob-ink: oklch(0.99 0.005 345);
+  --ob-tint: oklch(0.93 0.038 345);
+  --ob-shadow: oklch(0.45 0.075 345 / 0.12);
+  --ob-overlay: oklch(0.28 0.045 345 / 0.35);
 }
 html, body { background: var(--ob-bg-0); color: var(--ob-body); }
 body { -webkit-font-smoothing: antialiased; letter-spacing: 0; }
@@ -98,11 +98,9 @@ section, .page-section, .dashboard-section, [class^="section-"], [class*=" secti
   background: var(--ob-glass) !important; color: var(--ob-body) !important; border-color: var(--ob-hair) !important;
 }
 .chip.selected, .mood-chip-btn.selected, .micro-option-btn.selected, .segmented-option.selected, .rating-btn.selected,
-.face-option.selected, .pill-tab.active, .shelf-product-item.selected, .focus-ring-active, .bee-choice-btn.selected { border-color: #FF66B2 !important; background: #FF2A85 !important; color: #FFFFFF !important; box-shadow: 0 0 16px rgba(255, 42, 133, 0.55) !important; }
-.bee-choice-btn.selected .bee-choice-title,
-.bee-choice-btn.selected .bee-choice-desc {
-  color: #FFFFFF !important;
-  font-weight: 700 !important;
+.face-option.selected, .pill-tab.active, .shelf-product-item.selected, .focus-ring-active, .bee-choice-btn.selected {
+  background: var(--ob-tint) !important; color: var(--ob-head) !important; border-color: var(--ob-pink) !important;
+  box-shadow: none !important;
 }
 input, textarea, select { background: var(--ob-glass-hi) !important; color: var(--ob-head) !important; border-color: var(--ob-hair) !important; }
 input::placeholder, textarea::placeholder { color: var(--ob-label); }
@@ -435,7 +433,7 @@ select { background: var(--ob-glass-hi) !important; }
 .bee-input-name:focus { border-color: var(--ob-hair) !important; box-shadow: 0 0 0 4px var(--ob-shadow) !important; }
 .bee-choice-btn { background: var(--ob-glass-hi) !important; border: 1.5px solid var(--ob-hair) !important; }
 .bee-choice-btn:hover { border-color: var(--ob-hair) !important; background: var(--ob-glass-hi) !important; }
-.bee-choice-btn.selected { border-color: #FF66B2 !important; background: #FF2A85 !important; color: #FFFFFF !important; box-shadow: 0 0 16px rgba(255, 42, 133, 0.55) !important; }
+.bee-choice-btn.selected { border-color: var(--ob-hair) !important; background: var(--ob-glass-hi) !important; box-shadow: 0 0 0 3px var(--ob-shadow) !important; }
 .bee-choice-title { color: var(--ob-head) !important; }
 .bee-choice-desc { color: var(--ob-pink) !important; }
 .bee-step-dot { background: var(--ob-glass-hi) !important; }
@@ -454,7 +452,7 @@ select { background: var(--ob-glass-hi) !important; }
 .breathing-circle-core:hover { box-shadow: 0 0 28px var(--ob-shadow) !important; }
 .mindset-card:hover { border-color: var(--ob-hair) !important; box-shadow: 0 4px 16px var(--ob-shadow) !important; }
 .mindset-card-shuffle-hint { color: var(--ob-pink) !important; }
-.bee-choice-btn.selected { border-color: #FF66B2 !important; background: #FF2A85 !important; color: #FFFFFF !important; box-shadow: 0 0 16px rgba(255, 42, 133, 0.55) !important; }
+.bee-choice-btn.selected { border-color: var(--ob-hair) !important; background: var(--ob-glass-hi) !important; box-shadow: 0 0 0 2px var(--ob-shadow) !important; }
 .bee-choice-check-badge { background: var(--ob-pink) !important; color: var(--ob-head) !important; }
 .results-bento-card { background: var(--ob-glass-hi) !important; border: 1.5px solid var(--ob-hair) !important; box-shadow: 0 4px 20px var(--ob-shadow) !important; }
 .results-bento-card:hover { box-shadow: 0 8px 30px var(--ob-shadow) !important; border-color: var(--ob-hair) !important; }
@@ -470,7 +468,7 @@ select { background: var(--ob-glass-hi) !important; }
 .bm-figure-card { background: linear-gradient(160deg, var(--pale-blue), var(--ob-glass-hi)) !important; border: 1px solid var(--border-light, var(--ob-hair)) !important; }
 .bm-pin-track { fill: var(--ob-head) !important; stroke: var(--ob-body) !important; }
 .bm-pin-dot { fill: var(--ob-head) !important; }
-.bm-stage { background: var(--ob-glass-hi) !important; }
+.bm-stage { background: var(--ob-glass-hi))) !important; }
 .bm-stage::before { background: var(--ob-glass-hi) !important; }
 .bm-stage.show-clean::before { background: var(--ob-glass-hi) !important; }
 .bm-big-track { stroke: var(--ob-body) !important; }
@@ -479,101 +477,3 @@ select { background: var(--ob-glass-hi) !important; }
 .theme-toggle.btn { background: var(--ob-glass-hi) !important; color: var(--ob-head) !important; }
 @media (max-width: 767px) { #step-rail { position: relative !important; z-index: auto; } }
 @media (max-width: 820px) { body.has-profile #desktop-rail { display: none !important; } }
-
-
-/* Bright Logo and Branding in both modes */
-.intro-letters, .intro-glyph, .intro-plus, .intro-canvas, .intro-final-figure, .hero-character-emblem, .guide-avatar-badge, .bm-figure, .guide-floating-icon, .bee-avatar-hero {
-  color: #FF2A85 !important;
-  fill: #FF2A85 !important;
-  filter: drop-shadow(0 0 10px rgba(255, 42, 133, 0.6)) !important;
-}
-.intro-wordmark {
-  color: #FFFFFF !important;
-  text-shadow: 0 0 16px rgba(255, 42, 133, 0.6) !important;
-}
-.guide-avatar-badge {
-  background: #FF2A85 !important;
-  color: #FFFFFF !important;
-  box-shadow: 0 0 12px rgba(255, 42, 133, 0.5) !important;
-}
-#guide-floating-btn {
-  background: #FF2A85 !important;
-  color: #FFFFFF !important;
-  box-shadow: 0 4px 18px rgba(255, 42, 133, 0.5) !important;
-}
-#guide-floating-btn span {
-  color: #FFFFFF !important;
-}
-.intro-skip-btn { display: none !important; }
-
-/* Breathing animation fix & Partial calendar fill */
-.breathing-circle-core.inhaling,
-.breathing-circle-core.holding,
-.breathing-circle-core.exhaling {
-  transition: none !important;
-}
-.breathing-circle-core.inhaling { animation: breatheInAnim 4s ease-in-out forwards !important; }
-.breathing-circle-core.holding  { animation: breatheHoldAnim 4s ease-in-out forwards !important; }
-.breathing-circle-core.exhaling { animation: breatheOutAnim 4s ease-in-out forwards !important; }
-
-.dot.partial {
-  background: linear-gradient(to top, #FF2A85 var(--pct, 50%), var(--ob-glass-hi, #401026) var(--pct, 50%)) !important;
-  border-color: #FF2A85 !important;
-  color: #FFFFFF !important;
-  font-weight: 700 !important;
-}
-
-/* Badge blue to badge pink */
-.badge.badge-blue, .badge-blue {
-  background: var(--ob-tint, rgba(255,42,133,0.18)) !important;
-  color: #FF2A85 !important;
-  border: 1px solid var(--ob-hair, rgba(255,42,133,0.3)) !important;
-}
-
-/* Text contrast guarantee: light text on dark sections */
-.card h1, .card h2, .card h3, .card h4, .results-bento-card h1, .results-bento-card h2, .results-bento-card h3, .results-bento-card h4,
-.ritual-checklist-card h3, .mindset-card h3, .burn-rate-card h3, .breathing-card h3, .weather-selector-card h3 {
-  color: #FFFFFF !important;
-}
-.card p, .results-bento-card p, .ritual-step-text, .mindset-quote, .mindset-author, .card-text {
-  color: #FFEBF2 !important;
-}
-.card .muted, .results-bento-card .muted, .burn-rate-chip-label, .results-matrix-row .hint {
-  color: #FFD1DC !important;
-}
-
-/* Eliminating all blue in legacy style attributes */
-[style*="color:#0B5E9E"], [style*="color: #0B5E9E"], [style*="color:#1E40AF"], [style*="color:#1E3A8A"] { color: #FF2A85 !important; }
-[style*="color:#0F2D5E"], [style*="color: #0F2D5E"] { color: #FFFFFF !important; }
-[style*="background:#EFF6FF"], [style*="background:#F0F7FF"], [style*="background:#EBF4FC"], [style*="background:#E6F2FC"] { background: var(--ob-tint) !important; }
-[style*="border:1px solid #BFDBFE"], [style*="border: 1px solid #BFDBFE"], [style*="border:1.5px solid #BFDBFE"] { border-color: var(--ob-hair) !important; }
-
-/* Intro Stage Dismissal Guard & Smooth Play */
-.intro-stage {
-  position: fixed !important;
-  inset: 0 !important;
-  z-index: 10000 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  background: var(--ob-bg-0, #090A0F) !important;
-  color: #FF2A85 !important;
-  overflow: hidden !important;
-}
-
-:root[data-theme="light"] .intro-stage {
-  background: #FFF0F5 !important;
-  color: #7A0C43 !important;
-}
-
-:root[data-theme="light"] .intro-wordmark {
-  color: #7A0C43 !important;
-}
-
-.intro-stage.dismissed {
-  display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-  opacity: 0 !important;
-}
-
